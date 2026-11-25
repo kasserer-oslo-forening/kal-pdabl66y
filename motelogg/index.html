@@ -76,12 +76,23 @@ const providers={
   gemini:{
     async call(parts){
       if(!S.key)throw new Error('Mangler API-nøkkel i Innstillinger');
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model)}:generateContent`,{
-        method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
-        body:JSON.stringify({contents:[{role:'user',parts}]})});
-      const j=await r.json();
-      if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
-      return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
+      /* Prøver valgt modell, så reservemodeller; nytt forsøk ved overbelastning (429/500/503) */
+      const models=[...new Set([S.model,'gemini-flash-lite-latest','gemini-2.5-flash'])];
+      let last='Ukjent feil';
+      for(const m of models){
+        for(let attempt=0;attempt<3;attempt++){
+          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{
+            method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
+            body:JSON.stringify({contents:[{role:'user',parts}]})});
+          let j={};try{j=await r.json()}catch(e){}
+          if(r.ok)return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
+          last=j.error?.message||('HTTP '+r.status);
+          if(r.status===400||r.status===401||r.status===403)throw new Error(last);
+          if(r.status===404)break;
+          await new Promise(res=>setTimeout(res,2000*(attempt+1)));
+        }
+      }
+      throw new Error(last);
     },
     transcribe(b64){return this.call([
       {text:'Transkriber talen i dette lydklippet ordrett på norsk. Svar kun med teksten, uten kommentarer. Er det ingen tydelig tale, svar med en tom streng.'},

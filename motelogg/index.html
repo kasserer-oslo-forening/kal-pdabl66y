@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Møtelogg">
+<meta name="theme-color" content="#d8342c">
+<title>Møtelogg</title>
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#fff,#141414);--ink:light-dark(#161616,#f1f1f1);--soft:light-dark(#f2f1ef,#232323);--line:light-dark(#dcdad6,#363636);--mut:light-dark(#666,#a0a0a0);--rec:#d8342c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:28px;margin:6px 0 12px}
+h2{font-size:18px;margin:22px 0 8px}
+input,select,textarea{font:inherit;font-size:16px;width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+textarea{min-height:240px}
+button{font:inherit;font-weight:600;min-height:44px;padding:0 16px;border-radius:999px;border:1px solid var(--line);background:var(--soft);color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.deck{background:var(--soft);border-radius:16px;padding:16px;margin-top:12px}
+#rec{width:80px;height:80px;border-radius:50%;background:var(--rec);color:#fff;border:0}
+#rec.on{animation:p 1.4s infinite}
+@keyframes p{0%{box-shadow:0 0 0 0 #d8342c88}70%{box-shadow:0 0 0 16px #d8342c00}}
+.time{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.st{color:var(--mut);font-size:14px}
+.sum{white-space:pre-wrap;background:var(--soft);border-radius:12px;padding:14px;min-height:3em}
+details{margin-top:24px;border-top:1px solid var(--line);padding-top:12px}
+label{display:block;margin:10px 0 4px;font-size:14px;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Møtelogg</h1>
+<input id="title" placeholder="Navn på møtet">
+<div class="deck row">
+  <button id="rec">Start</button>
+  <div><div class="time" id="clock">00:00</div><div class="st" id="state">Klar</div></div>
+</div>
+<h2>Transkripsjon</h2>
+<textarea id="text" placeholder="Teksten kommer her, ca. hvert 20. sekund."></textarea>
+<div class="row" style="margin-top:10px">
+  <button id="sumBtn">Oppsummer</button>
+  <button id="copyBtn">Kopier alt</button>
+  <button id="clearBtn">Nytt møte</button>
+</div>
+<h2>Oppsummering</h2>
+<div class="sum" id="sum"></div>
+
+<details id="settings">
+  <summary>Innstillinger</summary>
+  <label for="prov">Tjeneste for transkripsjon og oppsummering</label>
+  <select id="prov"><option value="gemini">Google Gemini</option></select>
+  <label for="key">Gemini API-nøkkel (lagres bare på denne telefonen)</label>
+  <input id="key" type="password" autocomplete="off">
+  <label for="model">Modell</label>
+  <input id="model" value="gemini-flash-latest">
+  <label for="chunk">Sekunder per bit</label>
+  <input id="chunk" type="number" value="20" min="10" max="60">
+</details>
+</div>
+<script>
+{
+const $=id=>document.getElementById(id);
+const LS='motelogg-poc';
+let S={key:'',model:'gemini-flash-latest',chunk:20,title:'',text:'',summary:''};
+try{Object.assign(S,JSON.parse(localStorage.getItem(LS)||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem(LS,JSON.stringify(S))}catch(e){}};
+$('key').value=S.key;$('model').value=S.model;$('chunk').value=S.chunk;$('title').value=S.title;$('text').value=S.text;$('sum').textContent=S.summary;
+if(!S.key)$('settings').open=true;
+for(const [id,k] of [['key','key'],['model','model'],['chunk','chunk'],['title','title'],['text','text']])
+  $(id).addEventListener('input',()=>{S[k]=$(id).value;save()});
+
+/* ---------- Tjenester: bytt eller legg til her (f.eks. Claude for oppsummering senere) ---------- */
+const providers={
+  gemini:{
+    async call(parts){
+      if(!S.key)throw new Error('Mangler API-nøkkel i Innstillinger');
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model)}:generateContent`,{
+        method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':S.key},
+        body:JSON.stringify({contents:[{role:'user',parts}]})});
+      const j=await r.json();
+      if(!r.ok)throw new Error(j.error?.message||('HTTP '+r.status));
+      return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
+    },
+    transcribe(b64){return this.call([
+      {text:'Transkriber talen i dette lydklippet ordrett på norsk. Svar kun med teksten, uten kommentarer. Er det ingen tydelig tale, svar med en tom streng.'},
+      {inline_data:{mime_type:'audio/wav',data:b64}}])},
+    summarize(text,title){return this.call([{text:
+      'Her er en automatisk transkripsjon av et fysisk møte på norsk (kan ha feilhørte ord, ingen talernavn). Skriv på norsk bokmål, uten markdown-tegn:\n\nKORT SAMMENDRAG (3–5 setninger)\nHOVEDPUNKTER (linjer som starter med –)\nBESLUTNINGER\nOPPGAVER (hvem, hva, frist)\nUAVKLART\n\nMøte: '+(title||'ukjent')+'\n\n'+text}])}
+  }
+};
+const P=()=>providers[$('prov').value];
+
+/* ---------- Lyd: tar opp i biter og gjør hver bit om til 16 kHz WAV ---------- */
+let stream=null,rec=null,on=false,t0=0,tick=null,cut=null,queue=Promise.resolve(),wake=null,pending=0;
+const stamp=()=>{const s=Math.floor((Date.now()-t0)/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+function status(){ $('state').textContent=on?('Tar opp'+(pending?` · ${pending} bit(er) behandles`:'')):(pending?`Behandler ${pending} bit(er) …`:'Klar') }
+async function toWavB64(blob){
+  const ac=new (window.AudioContext||window.webkitAudioContext)();
+  const buf=await ac.decodeAudioData(await blob.arrayBuffer());ac.close&&ac.close();
+  const rate=16000,src=buf.getChannelData(0),ratio=buf.sampleRate/rate,n=Math.floor(src.length/ratio);
+  const dv=new DataView(new ArrayBuffer(44+n*2));
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)dv.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');dv.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true);dv.setUint32(28,rate*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);w(36,'data');dv.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const v=Math.max(-1,Math.min(1,src[Math.floor(i*ratio)]));dv.setInt16(44+i*2,v<0?v*0x8000:v*0x7fff,true)}
+  const bytes=new Uint8Array(dv.buffer);let bin='';for(let i=0;i<bytes.length;i+=0x8000)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(bin);
+}
+function handle(blob,at){
+  if(blob.size<2000)return;
+  pending++;status();
+  queue=queue.then(async()=>{
+    try{const txt=await P().transcribe(await toWavB64(blob));
+      if(txt){const ta=$('text');ta.value+=(ta.value&&!ta.value.endsWith('\n')?'\n':'')+'['+at+'] '+txt;S.text=ta.value;save();ta.scrollTop=ta.scrollHeight}}
+    catch(e){$('text').value+=`\n[${at}] (feil: ${e.message})`;S.text=$('text').value;save()}
+    pending--;status();
+  });
+}
+function startPiece(){
+  const chunks=[],at=stamp();
+  rec=new MediaRecorder(stream);
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{handle(new Blob(chunks,{type:rec.mimeType||'audio/mp4'}),at);if(on)startPiece()};
+  rec.start();
+  cut=setTimeout(()=>rec.state==='recording'&&rec.stop(),Math.max(10,+S.chunk||20)*1000);
+}
+async function start(){
+  if(!S.key){$('settings').open=true;$('key').focus();$('state').textContent='Legg inn API-nøkkel først';return}
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){$('state').textContent='Fikk ikke tilgang til mikrofonen';return}
+  on=true;if(!t0)t0=Date.now();$('rec').textContent='Stopp';$('rec').classList.add('on');
+  tick=setInterval(()=>$('clock').textContent=stamp(),1000);
+  try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
+  startPiece();status();
+}
+function stop(){
+  on=false;clearTimeout(cut);clearInterval(tick);
+  if(rec&&rec.state==='recording')rec.stop();
+  stream&&stream.getTracks().forEach(t=>t.stop());
+  try{wake&&wake.release()}catch(e){}
+  $('rec').textContent='Start';$('rec').classList.remove('on');status();
+}
+$('rec').addEventListener('click',()=>on?stop():start());
+document.addEventListener('visibilitychange',async()=>{if(on&&document.visibilityState==='visible'){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}});
+
+$('sumBtn').addEventListener('click',async()=>{
+  if(!S.text.trim()){$('sum').textContent='Ingen tekst ennå.';return}
+  $('sum').textContent='Oppsummerer …';
+  try{S.summary=await P().summarize(S.text,S.title);$('sum').textContent=S.summary;save()}
+  catch(e){$('sum').textContent='Feil: '+e.message}
+});
+$('copyBtn').addEventListener('click',()=>{
+  const all=(S.title?S.title+'\n\n':'')+(S.summary?'OPPSUMMERING\n'+S.summary+'\n\n':'')+'TRANSKRIPSJON\n'+S.text;
+  navigator.clipboard.writeText(all).then(()=>$('state').textContent='Kopiert').catch(()=>$('state').textContent='Kunne ikke kopiere');
+});
+let sure=false;
+$('clearBtn').addEventListener('click',()=>{
+  if(on)return;
+  if(!sure){sure=true;$('clearBtn').textContent='Sikker? Teksten slettes';setTimeout(()=>{sure=false;$('clearBtn').textContent='Nytt møte'},4000);return}
+  sure=false;$('clearBtn').textContent='Nytt møte';
+  S.title=S.text=S.summary='';t0=0;$('title').value=$('text').value='';$('sum').textContent='';$('clock').textContent='00:00';save();
+});
+}
+</script>
+</body>
+</html>

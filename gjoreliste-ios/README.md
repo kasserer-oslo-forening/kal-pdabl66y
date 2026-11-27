@@ -15,7 +15,7 @@ Samme gjøreliste som nettsiden (`gjoreliste/`), som egen app. Den henter og lag
 
 Med gratis Apple-ID må appen installeres på nytt fra Xcode hver 7. dag. Dataene ligger i Supabase, så ingenting forsvinner.
 
-**Hvis prosjektfila ikke vil åpne:** Lag et nytt prosjekt i Xcode (*File → New → Project → iOS → App*, navn `Gjoreliste`, SwiftUI, Swift, Storage: None). Slett `ContentView.swift` og `GjorelisteApp.swift` som Xcode lagde, og dra inn de fem filene fra `gjoreliste-ios/Gjoreliste/` (huk av *Copy items if needed*). Under fanen **Info** legger du til *Privacy - Reminders Full Access Usage Description* med en kort tekst. Sett *Minimum Deployments* til iOS 17.
+**Hvis prosjektfila ikke vil åpne:** Lag et nytt prosjekt i Xcode (*File → New → Project → iOS → App*, navn `Gjoreliste`, SwiftUI, Swift, Storage: None). Slett `ContentView.swift` og `GjorelisteApp.swift` som Xcode lagde, og dra inn filene fra `gjoreliste-ios/Gjoreliste/` (huk av *Copy items if needed*). Under fanen **Info** legger du til *Privacy - Reminders Full Access Usage Description* med en kort tekst. Sett *Minimum Deployments* til iOS 17.
 
 ## Slik virker appen
 
@@ -25,6 +25,16 @@ Med gratis Apple-ID må appen installeres på nytt fra Xcode hver 7. dag. Dataen
 - Trykk på **teksten** for detaljer, kilder («Hvor kommer dette fra») og flere valg.
 - Det du skriver inn, får `needs_triage = true`, så Claude sorterer det inn.
 - Dra ned for å oppdatere. Appen henter også nytt når du åpner den.
+
+## Widgeter
+
+Hold fingeren på låseskjermen eller hjemskjermen → **Tilpass** → **Legg til widgets** → **Gjøreliste**.
+
+- **Låseskjerm:** «Åpne Gjøreliste» (bare ikonet), «Neste oppgave» (bred, viser øverste oppgave) og en linje over klokka.
+- **Knapp på låst skjerm:** I kontrollsenteret eller nederst på låseskjermen kan du legge til knappen «Gjøreliste», som åpner appen.
+- **Hjemskjerm:** liten, middels og stor. Trykk på sirkelen for å krysse av rett fra widgeten, og på teksten for å åpne oppgaven.
+
+Widgetene viser det appen sist hentet. Avkrysninger fra en widget sendes til databasen neste gang appen åpnes. Appen og widgetene deler data gjennom App Group-en `group.no.sparhell.gjoreliste`.
 
 ## Påminnelser
 

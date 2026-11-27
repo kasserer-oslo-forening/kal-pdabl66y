@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import UIKit
+import WidgetKit
 
 // MARK: - Modeller (samme kolonner som i Supabase)
 
@@ -97,6 +98,7 @@ final class Store: ObservableObject {
     @Published var loggedIn = API.shared.isLoggedIn
     @Published var error: String?
     @Published var undoItem: UndoItem?
+    @Published var openTaskId: String?
     @Published var syncReminders: Bool = (UserDefaults.standard.object(forKey: "syncReminders") as? Bool) ?? true {
         didSet {
             UserDefaults.standard.set(syncReminders, forKey: "syncReminders")
@@ -123,6 +125,13 @@ final class Store: ObservableObject {
             tasks = tt; waiting = ww; wins = wiwi; meetings = mm
             projects = Dictionary(pp.map { ($0.k, $0.n) }, uniquingKeysWith: { a, _ in a })
             error = nil
+            // Avkrysninger gjort i en widget mens appen var lukket
+            for id in Shared.takePending() {
+                if let t = tasks.first(where: { $0.id == id }), isOpen(t) {
+                    await complete(t, fromReminders: true)
+                }
+            }
+            publishWidget()
             if syncReminders { await RemindersSync.shared.run(store: self) }
         } catch APIError.notLoggedIn {
             loggedIn = false
@@ -135,6 +144,30 @@ final class Store: ObservableObject {
         API.shared.signOut()
         loggedIn = false
         tasks = []
+        Shared.saveSnapshot(.empty)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Skriver toppen av lista til widgetene.
+    func publishWidget() {
+        let open = openList()
+        let items = open.prefix(8).map { t in
+            WidgetItem(id: t.id, t: t.t, dueDate: dueOf(t), star: t.star == 1,
+                       minutes: t.m ?? 0, context: t.c ?? "", pts: pts(t))
+        }
+        let st = todayStats()
+        Shared.saveSnapshot(WidgetSnapshot(points: st.p, goal: goal, doneToday: st.n,
+                                           urgentLeft: urgentCount(open), items: Array(items),
+                                           day: today, loggedIn: true))
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// gjoreliste://task/<id> åpner oppgaven, gjoreliste://open bare appen.
+    func handle(_ url: URL) {
+        guard url.scheme == "gjoreliste" else { return }
+        if url.host == "task", let id = url.pathComponents.dropFirst().first {
+            openTaskId = id
+        }
     }
 
     func scheduleSync() {
@@ -228,6 +261,7 @@ final class Store: ObservableObject {
         if let undoText { showUndo(undoText, prev) }
         do { try await API.shared.update("tasks", id: n.id, stateFields(n)) }
         catch { self.error = "Kunne ikke lagre: \(error.localizedDescription)" }
+        publishWidget()
         scheduleSync()
     }
     private func showUndo(_ text: String, _ prev: TaskRow) {
@@ -280,6 +314,7 @@ final class Store: ObservableObject {
             try await API.shared.insert("tasks", row)
             tasks.append(TaskRow(id: id, t: text, p: "inn", i: 1, done: false, dropped: false, log: [],
                                  needs_triage: true, created_at: Day.nowISO()))
+            publishWidget()
             scheduleSync()
         } catch {
             self.error = "Kunne ikke lagre: \(error.localizedDescription)"

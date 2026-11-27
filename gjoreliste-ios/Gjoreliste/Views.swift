@@ -105,6 +105,8 @@ struct MainView: View {
                     }
                 }
             }
+            .onChange(of: store.openTaskId) { _, _ in openRequested() }
+            .onReceive(store.$tasks) { _ in openRequested() }
             .sheet(item: $selected) { t in
                 DetailView(taskId: t.id).environmentObject(store)
             }
@@ -113,6 +115,13 @@ struct MainView: View {
             }
         }
         .tint(accent)
+    }
+
+    /// Åpner oppgaven en widget pekte på, når lista er lastet.
+    private func openRequested() {
+        guard let id = store.openTaskId, let t = store.tasks.first(where: { $0.id == id }) else { return }
+        selected = t
+        store.openTaskId = nil
     }
 
     private func add() {

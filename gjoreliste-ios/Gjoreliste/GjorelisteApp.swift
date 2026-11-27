@@ -16,6 +16,7 @@ struct GjorelisteApp: App {
             .onChange(of: phase) { _, p in
                 if p == .active, store.loggedIn { Task { await store.load() } }
             }
+            .onOpenURL { store.handle($0) }
             .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
                 store.scheduleSync()
             }

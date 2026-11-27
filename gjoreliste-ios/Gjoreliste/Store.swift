@@ -42,7 +42,20 @@ struct Win: Codable, Identifiable { var id: String; var d: String; var pts: Int?
 struct Meeting: Codable, Identifiable { var id: String; var d: String; var time: String?; var end: String?; var brief: Bool? }
 struct Project: Codable { var k: String; var n: String }
 
-struct UndoItem: Identifiable { let id = UUID(); let text: String; let prev: TaskRow }
+struct ChoreEntry: Codable, Identifiable, Hashable {
+    var id: String
+    var chore: String
+    var at: String
+    var task_id: String?
+    var log_day: String
+}
+
+struct UndoItem: Identifiable {
+    let id = UUID()
+    let text: String
+    let prev: TaskRow?
+    var choreId: String? = nil
+}
 
 // MARK: - Datoer (som "YYYY-MM-DD", lokal tid)
 
@@ -99,6 +112,10 @@ final class Store: ObservableObject {
     @Published var error: String?
     @Published var undoItem: UndoItem?
     @Published var openTaskId: String?
+    @Published var chores: [ChoreEntry] = []
+
+    /// Hurtigknappene og Tody-oppgaven hver av dem krysser av.
+    static let choreTask = ["oppvask": "tody-kitchen-do-the-dishes", "soppel": "tody-kitchen-take-out-garbage"]
     @Published var syncReminders: Bool = (UserDefaults.standard.object(forKey: "syncReminders") as? Bool) ?? true {
         didSet {
             UserDefaults.standard.set(syncReminders, forKey: "syncReminders")
@@ -121,8 +138,17 @@ final class Store: ObservableObject {
             async let wi: [Win] = API.shared.select("wins", [URLQueryItem(name: "d", value: "gte.\(since)")])
             async let m: [Meeting] = API.shared.select("meetings")
             async let p: [Project] = API.shared.select("projects")
-            let (tt, ww, wiwi, mm, pp) = try await (t, w, wi, m, p)
-            tasks = tt; waiting = ww; wins = wiwi; meetings = mm
+            async let ch: [ChoreEntry] = API.shared.select("chore_log", [URLQueryItem(name: "order", value: "at.desc"),
+                                                                        URLQueryItem(name: "limit", value: "500")])
+            let (tt, ww, wiwi, mm, pp, chch) = try await (t, w, wi, m, p, ch)
+            // Behold koblinger til påminnelser som ennå ikke har nådd databasen
+            let localLinks = Dictionary(tasks.compactMap { t in t.reminder_id.map { (t.id, $0) } }, uniquingKeysWith: { a, _ in a })
+            tasks = tt.map { r in
+                var r = r
+                if r.reminder_id == nil, let rid = localLinks[r.id] { r.reminder_id = rid }
+                return r
+            }
+            waiting = ww; wins = wiwi; meetings = mm; chores = chch
             projects = Dictionary(pp.map { ($0.k, $0.n) }, uniquingKeysWith: { a, _ in a })
             error = nil
             // Avkrysninger gjort i en widget mens appen var lukket
@@ -264,8 +290,8 @@ final class Store: ObservableObject {
         publishWidget()
         scheduleSync()
     }
-    private func showUndo(_ text: String, _ prev: TaskRow) {
-        let item = UndoItem(text: text, prev: prev)
+    private func showUndo(_ text: String, _ prev: TaskRow?, choreId: String? = nil) {
+        let item = UndoItem(text: text, prev: prev, choreId: choreId)
         undoItem = item
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 6_000_000_000)
@@ -304,7 +330,56 @@ final class Store: ObservableObject {
     }
     func undo(_ item: UndoItem) async {
         undoItem = nil
-        await apply(item.prev, undoText: nil, prev: item.prev)
+        if let cid = item.choreId { await removeChore(cid); return }
+        if let prev = item.prev { await apply(prev, undoText: nil, prev: prev) }
+    }
+
+    // MARK: Hurtigknapper
+
+    func choreCount(_ chore: String) -> Int { chores.filter { $0.chore == chore }.count }
+
+    func logChore(_ chore: String) async {
+        let id = UUID().uuidString.lowercased()
+        let taskId = Self.choreTask[chore]
+        chores.insert(ChoreEntry(id: id, chore: chore, at: Day.nowISO(), task_id: taskId, log_day: today), at: 0)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        do {
+            try await API.shared.insert("chore_log", ["id": id, "chore": chore, "task_id": nn(taskId), "log_day": today])
+        } catch {
+            chores.removeAll { $0.id == id }
+            self.error = "Kunne ikke lagre: \(error.localizedDescription)"
+            return
+        }
+        let text = chore == "oppvask" ? "Oppvasken er tatt." : "Søpla er ute."
+        if let tid = taskId, let t = tasks.first(where: { $0.id == tid }) {
+            var n = t
+            if let e = n.e { let nx = Day.add(today, e); n.next = nx; n.snooze = nx }
+            n.log = (n.log ?? []) + [today]
+            await apply(n, undoText: nil, prev: t)
+            showUndo("\(text) +\(pts(t)) poeng", nil, choreId: id)
+        } else {
+            publishWidget()
+            showUndo(text, nil, choreId: id)
+        }
+    }
+
+    /// Fjerner et feiltrykk: sletter raden og tar bort dagen fra Tody-oppgavens logg.
+    func removeChore(_ id: String) async {
+        guard let entry = chores.first(where: { $0.id == id }) else { return }
+        chores.removeAll { $0.id == id }
+        do { try await API.shared.delete("chore_log", id: id) }
+        catch { self.error = "Kunne ikke slette: \(error.localizedDescription)" }
+        guard let tid = entry.task_id, let t = tasks.first(where: { $0.id == tid }) else { publishWidget(); return }
+        var n = t
+        var log = n.log ?? []
+        if let i = log.lastIndex(of: entry.log_day) { log.remove(at: i) }
+        n.log = log
+        if let e = n.e {
+            let next = log.max().map { Day.add($0, e) } ?? today
+            n.next = next
+            n.snooze = next > today ? next : nil
+        }
+        await apply(n, undoText: nil, prev: t)
     }
 
     func add(_ text: String) async {

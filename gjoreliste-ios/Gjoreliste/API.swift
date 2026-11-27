@@ -119,6 +119,10 @@ final class API {
                            body: try JSONSerialization.data(withJSONObject: f), prefer: "return=minimal")
     }
 
+    func delete(_ table: String, id: String) async throws {
+        _ = try await rest("DELETE", table, query: [URLQueryItem(name: "id", value: "eq.\(id)")], prefer: "return=minimal")
+    }
+
     func insert(_ table: String, _ fields: [String: Any]) async throws {
         _ = try await rest("POST", table, body: try JSONSerialization.data(withJSONObject: fields), prefer: "return=minimal")
     }

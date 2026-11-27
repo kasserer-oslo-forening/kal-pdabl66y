@@ -58,6 +58,10 @@ final class RemindersSync {
         return changed
     }
 
+    /// Den eksterne id-en overlever iCloud-synk bedre enn den interne.
+    private func rid(_ r: EKReminder) -> String { r.calendarItemExternalIdentifier ?? r.calendarItemIdentifier }
+    private func norm(_ s: String?) -> String { (s ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+
     func run(store s: Store) async {
         guard !running, s.syncReminders, s.loggedIn else { return }
         running = true
@@ -66,7 +70,10 @@ final class RemindersSync {
 
         let reminders = await fetch(cal)
         var byId: [String: EKReminder] = [:]
-        for r in reminders { byId[r.calendarItemIdentifier] = r }
+        for r in reminders {
+            byId[r.calendarItemIdentifier] = r
+            if let ext = r.calendarItemExternalIdentifier { byId[ext] = r }
+        }
         let top = s.topList()
         let topIds = Set(top.map(\.id))
         var linked = Set<String>()
@@ -79,7 +86,12 @@ final class RemindersSync {
                 if !topIds.contains(t.id) { await s.setReminderId(t.id, nil) }
                 continue
             }
-            linked.insert(rid)
+            if linked.contains(r.calendarItemIdentifier) {
+                // To oppgaver peker på samme påminnelse – slipp den andre
+                await s.setReminderId(t.id, nil)
+                continue
+            }
+            linked.insert(r.calendarItemIdentifier)
             let finished = t.done == true || t.dropped == true
             if r.isCompleted {
                 if !finished && !s.isHist(t) { await s.complete(t, fromReminders: true) }
@@ -98,20 +110,40 @@ final class RemindersSync {
             if fill(r, from: t, s, isNew: false) { try? ek.save(r, commit: false) }
         }
 
-        // 2. Nye påminnelser du har laget selv i listen
+        // 2. Påminnelser uten kobling: finnes oppgaven fra før (samme tittel), kobles de sammen.
+        //    Bare helt nye påminnelser du har laget selv, blir nye oppgaver.
         for r in reminders where !r.isCompleted && !linked.contains(r.calendarItemIdentifier) {
-            await s.addFromReminder(title: r.title ?? "", reminderId: r.calendarItemIdentifier, due: r.dueDateComponents)
+            let title = norm(r.title)
+            let open = s.tasks.first { norm($0.t) == title && $0.done != true && $0.dropped != true }
+            let any = open ?? s.tasks.first { norm($0.t) == title }
+            if let match = any {
+                if let other = match.reminder_id, let o = byId[other], o.calendarItemIdentifier != r.calendarItemIdentifier {
+                    try? ek.remove(r, commit: false)          // en ekstra kopi av samme oppgave
+                } else if match.done == true || match.dropped == true {
+                    r.isCompleted = true
+                    try? ek.save(r, commit: false)
+                } else if topIds.contains(match.id) {
+                    linked.insert(r.calendarItemIdentifier)
+                    await s.setReminderId(match.id, rid(r))
+                } else {
+                    try? ek.remove(r, commit: false)
+                }
+                continue
+            }
+            linked.insert(r.calendarItemIdentifier)
+            await s.addFromReminder(title: r.title ?? "", reminderId: rid(r), due: r.dueDateComponents)
         }
 
         // 3. Oppgaver øverst i lista som mangler påminnelse
         for t in top {
-            if let rid = t.reminder_id, byId[rid] != nil { continue }
+            guard let cur = s.tasks.first(where: { $0.id == t.id }) else { continue }
+            if let id = cur.reminder_id, byId[id] != nil { continue }
             let r = EKReminder(eventStore: ek)
             r.calendar = cal
             _ = fill(r, from: t, s, isNew: true)
             do {
                 try ek.save(r, commit: true)
-                await s.setReminderId(t.id, r.calendarItemIdentifier)
+                await s.setReminderId(t.id, rid(r))
             } catch {}
         }
         try? ek.commit()

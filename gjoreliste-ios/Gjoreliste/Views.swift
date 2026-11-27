@@ -56,6 +56,7 @@ struct MainView: View {
     @State private var newText = ""
     @State private var selected: TaskRow?
     @State private var showRest = false
+    @State private var showSettings = false
 
     var body: some View {
         NavigationStack {
@@ -96,17 +97,20 @@ struct MainView: View {
             }
             .refreshable { await store.load() }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Toggle("Synk med Påminnelser", isOn: $store.syncReminders)
-                        Button("Logg ut", role: .destructive) { store.logout() }
-                    } label: {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    ChoreButton(chore: "oppvask", symbol: "fork.knife", label: "Oppvask tatt")
+                    ChoreButton(chore: "soppel", symbol: "trash.fill", label: "Søpla er ute")
+                    Button { showSettings = true } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("Innstillinger og historikk")
                 }
             }
             .onChange(of: store.openTaskId) { _, _ in openRequested() }
             .onReceive(store.$tasks) { _ in openRequested() }
+            .sheet(isPresented: $showSettings) {
+                SettingsView().environmentObject(store)
+            }
             .sheet(item: $selected) { t in
                 DetailView(taskId: t.id).environmentObject(store)
             }
@@ -330,5 +334,93 @@ struct UndoBanner: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.85)))
         .padding()
         .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+}
+
+
+/// Hurtigknapp med teller over ikonet. Hvert trykk lagres i historikken.
+struct ChoreButton: View {
+    @EnvironmentObject var store: Store
+    let chore: String
+    let symbol: String
+    let label: String
+
+    var body: some View {
+        Button {
+            Task { await store.logChore(chore) }
+        } label: {
+            VStack(spacing: 1) {
+                Text("\(store.choreCount(chore))")
+                    .font(.caption2.weight(.bold).monospacedDigit())
+                    .contentTransition(.numericText())
+                Image(systemName: symbol)
+            }
+            .foregroundStyle(accent)
+            .animation(.default, value: store.choreCount(chore))
+        }
+        .accessibilityLabel(label)
+        .accessibilityValue("\(store.choreCount(chore)) ganger")
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    if store.chores.isEmpty {
+                        Text("Ingen trykk ennå.").foregroundStyle(.secondary)
+                    }
+                    ForEach(store.chores) { c in
+                        HStack(spacing: 12) {
+                            Image(systemName: c.chore == "oppvask" ? "fork.knife" : "trash.fill")
+                                .foregroundStyle(accent)
+                                .frame(width: 24)
+                            Text(c.chore == "oppvask" ? "Oppvask" : "Søpla ut")
+                            Spacer()
+                            Text(Self.when(c.at)).font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                    .onDelete { offsets in
+                        let ids = offsets.map { store.chores[$0].id }
+                        Task { for id in ids { await store.removeChore(id) } }
+                    }
+                } header: {
+                    Text("Historikk – oppvask \(store.choreCount("oppvask")), søppel \(store.choreCount("soppel"))")
+                } footer: {
+                    Text("Sveip mot venstre for å fjerne et feiltrykk.")
+                }
+                Section {
+                    Toggle("Synk med Påminnelser", isOn: $store.syncReminders)
+                }
+                Section {
+                    Button("Logg ut", role: .destructive) {
+                        dismiss()
+                        store.logout()
+                    }
+                }
+            }
+            .navigationTitle("Innstillinger")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Ferdig") { dismiss() } }
+            }
+        }
+    }
+
+    private static let out: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "nb_NO")
+        f.dateFormat = "EEE d.M. 'kl.' HH:mm"
+        return f
+    }()
+
+    static func when(_ iso: String) -> String {
+        let clean = iso.replacingOccurrences(of: #"\.\d+"#, with: "", options: .regularExpression)
+        guard let d = ISO8601DateFormatter().date(from: clean) else { return "" }
+        return out.string(from: d)
     }
 }

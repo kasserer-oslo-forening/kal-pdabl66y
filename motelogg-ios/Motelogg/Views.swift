@@ -2,10 +2,20 @@ import SwiftUI
 
 // MARK: - Liste over møter
 
+enum Route: Hashable { case record(auto: Bool) }
+
 struct ContentView: View {
     @Environment(MeetingStore.self) private var store
     @State private var search = ""
     @State private var showSettings = false
+    @State private var path: [Route] = []
+    private let launch = LaunchAction.shared
+
+    private func handleLaunch() {
+        guard launch.startRequested else { return }
+        launch.startRequested = false
+        path = [.record(auto: true)]
+    }
 
     private var filtered: [Meeting] {
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -16,13 +26,11 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
-                    NavigationLink {
-                        RecordView()
-                    } label: {
-                        Label("Nytt møte", systemImage: "record.circle")
+                    NavigationLink(value: Route.record(auto: false)) {
+                        Label("Nytt opptak", systemImage: "record.circle")
                             .font(.headline)
                             .foregroundStyle(.red)
                     }
@@ -51,7 +59,14 @@ struct ContentView: View {
                 }
             }
             .searchable(text: $search, prompt: "Søk i møter")
-            .navigationTitle("Møtelogg")
+            .navigationTitle("Referat")
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .record(let auto): RecordView(autostart: auto)
+                }
+            }
+            .onAppear { handleLaunch() }
+            .onChange(of: launch.startRequested) { _, _ in handleLaunch() }
             .toolbar {
                 Button { showSettings = true } label: { Image(systemName: "gearshape") }
             }
@@ -63,6 +78,7 @@ struct ContentView: View {
 // MARK: - Opptak
 
 struct RecordView: View {
+    var autostart = false
     @Environment(MeetingStore.self) private var store
     @AppStorage("chunkSeconds") private var chunkSeconds = 20.0
     @State private var rec = Recorder()
@@ -120,6 +136,12 @@ struct RecordView: View {
             }
         }
         .navigationTitle("Opptak")
+        .task {
+            if autostart && !rec.isRecording {
+                rec.chunkSeconds = chunkSeconds
+                await rec.start()
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(rec.isRecording)
     }

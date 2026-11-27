@@ -9,6 +9,9 @@ struct MoteloggApp: App {
         WindowGroup {
             ContentView()
                 .environment(store)
+                .onOpenURL { url in
+                    if url.host == "record" { LaunchAction.shared.startRequested = true }
+                }
         }
     }
 }

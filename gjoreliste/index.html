@@ -207,8 +207,9 @@ section .scroll{background:var(--surface);border:1px solid var(--line);border-ra
   <h1>Gjøreliste</h1>
   <p>Logg inn med e-postadressen din. Du får en innloggingslenke på e-post.</p>
   <input id="email" type="email" autocomplete="email" placeholder="E-post" required aria-label="E-post">
-  <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Kode fra e-posten" hidden aria-label="Kode">
-  <button class="btn primary">Send lenke</button>
+  <input id="code" type="password" autocomplete="current-password" placeholder="Passord (hvis du har laget et)" aria-label="Passord">
+  <button class="btn primary" id="pwbtn" type="button">Logg inn med passord</button>
+  <button class="btn" id="linkbtn">Send innloggingslenke på e-post</button>
   <p id="loginmsg" role="status"></p>
 </form>
 <div class="wrap" id="app" hidden>
@@ -228,7 +229,7 @@ section .scroll{background:var(--surface);border:1px solid var(--line);border-ra
   </nav>
 
   <main id="view"></main>
-  <div class="sync" id="sync"><span>Kobler til …</span><span><span id="who"></span> · <button class="btn quiet" id="logout">Logg ut</button></span></div>
+  <div class="sync" id="sync"><span>Kobler til …</span><span><span id="who"></span> · <button class="btn quiet" id="setpw">Lag passord</button> <button class="btn quiet" id="logout">Logg ut</button></span></div>
 </div>
 <script>
 (function(){
@@ -719,13 +720,17 @@ async function start(session){
 /* ---------- innlogging ---------- */
 const LF=document.getElementById("loginform"), LE=document.getElementById("email"), LC=document.getElementById("code"), LM=document.getElementById("loginmsg");
 try{LE.value=localStorage.getItem("gl-email")||""}catch(e){}
+document.getElementById("pwbtn").onclick=async()=>{const email=LE.value.trim().toLowerCase(),password=LC.value;if(!email||!password){LM.textContent="Skriv inn e-post og passord.";return}
+  try{localStorage.setItem("gl-email",email)}catch(e){}
+  LM.textContent="Logger inn …";const {error}=await sb.auth.signInWithPassword({email,password});
+  if(error)LM.textContent=/Invalid login/i.test(error.message)?"Feil e-post eller passord. Har du laget passord ennå? Det gjør du nederst i lista når du er logget inn.":"Feil: "+error.message;};
 LF.onsubmit=async e=>{e.preventDefault();const email=LE.value.trim().toLowerCase();if(!email)return;
-  if(LC.hidden){
+  if(true){
     try{localStorage.setItem("gl-email",email)}catch(e){}
     LM.textContent="Sender …";
     const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
-    if(error){LM.textContent="Feil: "+error.message;return}
-    LF.querySelector("button").textContent="Send ny lenke";
+    if(error){LM.textContent=/rate limit/i.test(error.message)?"Supabase sender bare noen få e-poster i timen. Vent en time, eller logg inn med passord.":"Feil: "+error.message;return}
+    if(/rate limit/i.test(""))return;
     LM.textContent="Sjekk e-posten og trykk på lenken. Den åpner lista her.";
   }else{
     const token=LC.value.replace(/\s/g,"");if(!token)return;LM.textContent="Logger inn …";
@@ -733,6 +738,8 @@ LF.onsubmit=async e=>{e.preventDefault();const email=LE.value.trim().toLowerCase
     if(error)LM.textContent="Feil kode: "+error.message;
   }
 };
+document.getElementById("setpw").onclick=async()=>{const pw=prompt("Nytt passord for lista (minst 8 tegn). Da kan du logge inn uten e-post, for eksempel i Claude-appen.");if(!pw)return;if(pw.length<8){toast("Passordet må ha minst 8 tegn.");return}
+  const {error}=await sb.auth.updateUser({password:pw});toast(error?"Kunne ikke lagre passordet: "+error.message:"Passordet er lagret. Logg inn med e-post og passord på andre enheter.")};
 document.getElementById("logout").onclick=async()=>{await sb.auth.signOut();location.reload()};
 let started=false;
 sb.auth.onAuthStateChange((ev,session)=>{if(session&&!started){started=true;start(session)}});

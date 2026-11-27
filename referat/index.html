@@ -70,6 +70,7 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
 <body>
 <header><div class="bar">
   <h1>Referat</h1>
+  <button id="syncBtn">Logg inn for synk</button>
   <button class="pri" id="newBtn">+ Nytt opptak</button>
   <button id="setBtn" aria-label="Innstillinger">⚙︎</button>
 </div></header>
@@ -140,6 +141,15 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
   <div style="margin-top:14px;text-align:right"><button id="setClose" class="pri">Ferdig</button></div>
 </dialog>
 
+<dialog id="login">
+  <h2 style="margin-top:0">Logg inn for synk</h2>
+  <p class="st" style="margin:0 0 6px">Samme e-post og passord som gjørelista. Opptakene synkes da mellom PC, iPhone og nettleser.</p>
+  <label for="lEmail">E-post</label><input id="lEmail" type="email" autocomplete="username">
+  <label for="lPw">Passord</label><input id="lPw" type="password" autocomplete="current-password">
+  <p class="st" id="lMsg" role="status"></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button id="lCancel">Avbryt</button><button class="pri" id="lGo">Logg inn</button></div>
+</dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 {
 const $=id=>document.getElementById(id);
@@ -153,11 +163,56 @@ let DB={settings:{key:'',model:'gemini-flash-latest',chunk:60,engine:'hybrid'},s
 try{const v=JSON.parse(localStorage.getItem(LS)||'null');if(v)DB={...DB,...v,settings:{...DB.settings,...v.settings}}}catch(e){}
 if(!DB.settings.chunkV2){DB.settings.chunk=60;DB.settings.chunkV2=true}
 try{if(!DB.settings.key){const old=JSON.parse(localStorage.getItem('motelogg-poc')||'{}');if(old.key)DB.settings.key=old.key}}catch(e){}
-const save=()=>{try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){}};
+const localSave=()=>{try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){}};
+const save=()=>{if(S){S.updated=Date.now();queuePush(S)}localSave()};
 const newSession=()=>({id:uid(),title:'',created:new Date().toISOString(),dur:0,segments:[],notes:[],summary:null});
 let S=DB.sessions.find(s=>s.id===DB.current);
 if(!S){S=newSession();DB.sessions.push(S);DB.current=S.id;save()}
 for(const x of DB.sessions)for(const g of x.segments)if(g.status==='wait')g.status='fail';
+
+/* ---------- Synk via Supabase (samme prosjekt og innlogging som gjørelista) ---------- */
+const SB_URL='https://oqdjxiokzjepznvhbvkn.supabase.co',SB_KEY='sb_publishable_PxQBW9-6M1Xm3YKiSWI6ow_1XNsT0YH';
+var sb=null,sbUser=null,syncing=false,pushT={};
+const syncState=t=>{$('syncBtn').textContent=t};
+const hasContent=x=>x.segments.length||x.notes.length||x.title;
+function queuePush(x){if(!sbUser)return;clearTimeout(pushT[x.id]);pushT[x.id]=setTimeout(()=>pushNow(x),1200)}
+async function pushNow(x,deleted=false){
+  if(!sbUser||(!deleted&&!hasContent(x)))return;syncState('Synker …');
+  const {error}=await sb.from('referat_sessions').upsert({id:x.id,data:x,deleted,updated_at:new Date(x.updated||Date.now()).toISOString()});
+  syncState(error?'Synk feilet – trykk for å prøve igjen':'Synket ✓');
+}
+function mergeRemote(row){
+  const i=DB.sessions.findIndex(x=>x.id===row.id);
+  if(on&&S.id===row.id)return false; // opptaket pågår her: lokal versjon gjelder
+  if(row.deleted){if(i<0)return false;DB.sessions.splice(i,1);if(S.id===row.id){S=newSession();DB.sessions.push(S);DB.current=S.id}return true}
+  const r=row.data;if(!r||!r.id)return false;r.updated=r.updated||Date.parse(row.updated_at);
+  r.segments=r.segments||[];r.notes=r.notes||[];
+  if(i<0){DB.sessions.push(r);return true}
+  if((r.updated||0)>(DB.sessions[i].updated||0)){DB.sessions[i]=r;if(S.id===r.id)S=r;return true}
+  return false;
+}
+async function pullAll(){
+  if(!sbUser||syncing)return;syncing=true;syncState('Synker …');
+  const {data,error}=await sb.from('referat_sessions').select('id,data,deleted,updated_at');
+  syncing=false;if(error){syncState('Synk feilet – trykk for å prøve igjen');return}
+  for(const row of data)mergeRemote(row);
+  const remote=new Map(data.map(r=>[r.id,r]));
+  for(const x of DB.sessions){const r=remote.get(x.id);if(hasContent(x)&&(!r||(x.updated||0)>(r.data?.updated||Date.parse(r.updated_at))))queuePush(x)}
+  localSave();renderAll();syncState('Synket ✓');
+}
+async function pullSettings(){
+  const {data}=await sb.from('referat_settings').select('*').eq('id','main').maybeSingle();
+  if(data){if(!DB.settings.key&&data.gemini_key)DB.settings.key=data.gemini_key;if(!DB.settings.vocab&&data.vocab)DB.settings.vocab=data.vocab;localSave();renderKey()}
+  if((!data||!data.gemini_key)&&DB.settings.key)pushSettings();
+}
+async function pushSettings(){if(!sbUser)return;await sb.from('referat_settings').upsert({id:'main',gemini_key:DB.settings.key||null,vocab:DB.settings.vocab||null,updated_at:new Date().toISOString()})}
+async function startSync(){
+  await pullSettings();await pullAll();
+  sb.channel('referat').on('postgres_changes',{event:'*',schema:'public',table:'referat_sessions'},p=>{
+    if(p.new&&p.new.id&&mergeRemote(p.new)){localSave();renderList();if(S.id===p.new.id&&document.activeElement!==$('title'))renderAll()}
+  }).subscribe();
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pullAll()});
+}
 
 /* ---------- Visning ---------- */
 let anchor=null; // minutt (tall) eller null = nå
@@ -416,11 +471,21 @@ if(!SR&&$('engine').value==='live')$('engine').value='gemini';
 $('engine').addEventListener('change',()=>{DB.settings.engine=$('engine').value;save()});
 $('rec').addEventListener('click',()=>on?stop():start());
 $('newBtn').addEventListener('click',()=>{if(on)stop();S=newSession();DB.sessions.push(S);DB.current=S.id;anchor=null;save();renderAll();status();window.scrollTo({top:0});$('title').focus()});
-$('keySave').addEventListener('click',()=>{const k=$('keyQuick').value.trim();if(!k)return;DB.settings.key=k;save();renderKey();status('Nøkkel lagret')});
+$('keySave').addEventListener('click',()=>{const k=$('keyQuick').value.trim();if(!k)return;DB.settings.key=k;localSave();pushSettings();renderKey();status('Nøkkel lagret')});
+$('syncBtn').addEventListener('click',()=>{if(sbUser)pullAll();else{$('lMsg').textContent='';$('login').showModal()}});
+$('lCancel').addEventListener('click',()=>$('login').close());
+$('lGo').addEventListener('click',async()=>{
+  if(!sb){$('lMsg').textContent='Synk er ikke tilgjengelig akkurat nå.';return}
+  $('lMsg').textContent='Logger inn …';
+  const {error}=await sb.auth.signInWithPassword({email:$('lEmail').value.trim(),password:$('lPw').value});
+  if(error)$('lMsg').textContent=/Invalid login/i.test(error.message)?'Feil e-post eller passord.':'Feil: '+error.message;else $('login').close();
+});
+$('lPw').addEventListener('keydown',e=>{if(e.key==='Enter')$('lGo').click()});
 $('search').addEventListener('input',renderList);
 $('list').addEventListener('click',e=>{
   const rm=e.target.closest('[data-rm]');
   if(rm){e.stopPropagation();if(rm.dataset.sure!=='1'){rm.dataset.sure='1';rm.textContent='Sikker?';return}
+    const gone=DB.sessions.find(s=>s.id===rm.dataset.rm);if(gone)pushNow(gone,true);
     DB.sessions=DB.sessions.filter(s=>s.id!==rm.dataset.rm);if(S.id===rm.dataset.rm){S=newSession();DB.sessions.push(S);DB.current=S.id;renderAll()}save();renderList();return}
   const o=e.target.closest('[data-open]');if(o&&!on){S=DB.sessions.find(s=>s.id===o.dataset.open);DB.current=S.id;anchor=null;save();renderAll();window.scrollTo({top:0})}
 });
@@ -439,8 +504,12 @@ $('anchorClr').addEventListener('click',()=>{anchor=null;renderTx();renderAnchor
 $('sumBtn').addEventListener('click',summarize);
 $('copyBtn').addEventListener('click',()=>navigator.clipboard.writeText(exportText()).then(()=>status('Kopiert')).catch(()=>status('Kunne ikke kopiere')));
 $('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('vocab').value=DB.settings.vocab||'';$('dbg').textContent='Metode: '+(txMode||'ikke brukt ennå')+'\nSiste svar fra Google:\n'+(lastRaw||'–');$('settings').showModal()});
-$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||60;DB.settings.vocab=$('vocab').value;save();renderKey();$('settings').close()});
+$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||60;DB.settings.vocab=$('vocab').value;localSave();pushSettings();renderKey();$('settings').close()});
 renderAll();status();
+try{
+  sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+  sb.auth.onAuthStateChange((ev,ses)=>{const u=ses?.user||null;if(u&&!sbUser){sbUser=u;startSync()}else if(!u&&sbUser){sbUser=null;syncState('Logg inn for synk')}});
+}catch(e){syncState('Synk utilgjengelig')}
 }
 </script>
 </body>

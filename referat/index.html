@@ -20,7 +20,17 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px so
 .bar{max-width:900px;margin:0 auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .bar h1{font-size:22px;margin:0 auto 0 0}
 .bar select{width:auto;min-height:42px;border-radius:999px;padding:0 12px}
-main{max-width:900px;margin:0 auto;padding:14px}
+.wrap{max-width:1200px;margin:0 auto;padding:14px;display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+#archive{order:2}
+@media(min-width:900px){.wrap{grid-template-columns:290px minmax(0,1fr)}#archive{order:0;position:sticky;top:76px;align-self:start;max-height:calc(100vh - 90px);overflow:auto}}
+#archive h2{margin-top:0}
+.list li.cur{border-color:var(--rec)}
+.keybox{background:var(--q);border-left:4px solid var(--qb);border-radius:12px;padding:12px 14px;margin:10px 0}
+.keybox ol{margin:6px 0 10px;padding-left:20px}
+.keybox .row{display:flex;gap:8px}
+.engine{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-2px 0 6px}
+.engine select{width:auto;border-radius:999px;min-height:40px}
+.preview{color:var(--mut);font-style:italic}
 .deck{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--soft);border-radius:16px;padding:14px;margin:10px 0}
 #rec{width:76px;height:76px;border-radius:50%;border:0;background:var(--rec);color:#fff;flex:none}
 #rec.on{animation:p 1.4s infinite}
@@ -58,27 +68,38 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
 <body>
 <header><div class="bar">
   <h1>Referat</h1>
-  <select id="engine" aria-label="Transkripsjon">
-    <option value="live">Live (nettleser)</option>
-    <option value="gemini">Gemini (biter, mest nøyaktig)</option>
-  </select>
   <button class="pri" id="newBtn">+ Nytt opptak</button>
-  <button id="archBtn">Tidligere</button>
   <button id="setBtn" aria-label="Innstillinger">⚙︎</button>
 </div></header>
 
-<main>
-<section id="archive" class="hide">
+<div class="wrap">
+<aside id="archive">
   <h2>Tidligere opptak</h2>
   <input id="search" placeholder="Søk i tittel, tekst og notater">
   <ul class="list" id="list" style="margin-top:10px"></ul>
-</section>
+</aside>
 
-<section id="session">
+<main id="session">
+  <div class="keybox hide" id="keybox">
+    <b>Gemini-nøkkelen mangler i denne nettleseren.</b>
+    <ol>
+      <li>Åpne <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a></li>
+      <li>Trykk på nøkkelen i prosjektet <b>Nettsidene</b> (det med betaling) og kopier den. Den starter med «AIza».</li>
+      <li>Lim den inn her. Den huskes i denne nettleseren.</li>
+    </ol>
+    <div class="row"><input id="keyQuick" type="password" placeholder="Lim inn nøkkelen" autocomplete="off"><button class="pri" id="keySave">Lagre</button></div>
+  </div>
   <input id="title" placeholder="Tittel (lages automatisk ved oppsummering)">
   <div class="deck">
     <button id="rec">Start</button>
     <div><div class="time" id="clock">00:00</div><div class="st" id="state">Klar</div></div>
+  </div>
+  <div class="engine"><label for="engine" class="st">Transkripsjon:</label>
+    <select id="engine">
+      <option value="hybrid">Gemini + live forhåndsvisning (anbefalt)</option>
+      <option value="gemini">Bare Gemini</option>
+      <option value="live">Bare nettleserens live (raskest, svakest)</option>
+    </select>
   </div>
 
   <h2>Transkripsjon</h2>
@@ -99,13 +120,13 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
     <button class="pri" id="sumBtn">Oppsummer</button>
     <button id="copyBtn">Kopier alt</button>
   </div>
-  <div class="sum" id="sum"><span class="st">Trykk «Oppsummer» når opptaket er ferdig.</span></div>
-</section>
+  <div class="sum" id="sum"><span class="st">Oppsummeringen lages automatisk når du trykker Stopp.</span></div>
 </main>
+</div>
 
 <dialog id="settings">
   <h2 style="margin-top:0">Innstillinger</h2>
-  <label for="key">Gemini API-nøkkel (lagres bare i denne nettleseren)</label>
+  <label for="key">Gemini API-nøkkel (lagres bare i denne nettleseren). Hent den på <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>, prosjekt Nettsidene.</label>
   <input id="key" type="password" autocomplete="off">
   <label for="model">Modell</label>
   <input id="model">
@@ -150,7 +171,7 @@ function renderAnchor(){
 }
 function renderSummary(){
   const m=S.summary;
-  if(!m){$('sum').innerHTML='<span class="st">Trykk «Oppsummer» når opptaket er ferdig.</span>';return}
+  if(!m){$('sum').innerHTML='<span class="st">Oppsummeringen lages automatisk når du trykker Stopp.</span>';return}
   const list=(title,arr,f=x=>esc(x))=>arr&&arr.length?`<h3>${title}</h3><ul>${arr.map(x=>`<li>${f(x)}</li>`).join('')}</ul>`:'';
   $('sum').innerHTML=`${m.type?`<span class="tag">${esc(m.type)}</span>`:''}
     <h3>Sammendrag</h3><p>${esc(m.summary)}</p>
@@ -161,11 +182,12 @@ function renderSummary(){
     ${list('Mine notater',m.notes)}
     ${list('Uavklart / til oppfølging',m.open)}`;
 }
-function renderAll(){$('title').value=S.title;$('clock').textContent=fmt(S.dur);renderTx();renderAnchor();renderSummary()}
+function renderKey(){$('keybox').classList.toggle('hide',!!DB.settings.key)}
+function renderAll(){renderKey();renderList();$('title').value=S.title;$('clock').textContent=fmt(S.dur);renderTx();renderAnchor();renderSummary()}
 function renderList(){
   const q=$('search').value.trim().toLowerCase();
-  const items=DB.sessions.filter(s=>s.segments.length||s.title||s.notes.length).filter(s=>!q||(s.title+' '+s.segments.map(x=>x.text).join(' ')+' '+s.notes.map(n=>n.text+' '+(n.answer||'')).join(' ')).toLowerCase().includes(q)).sort((a,b)=>b.created.localeCompare(a.created));
-  $('list').innerHTML=items.map(s=>`<li data-open="${esc(s.id)}"><div><b>${esc(s.title||'Uten tittel')}</b><small>${esc(new Date(s.created).toLocaleString('no-NO',{dateStyle:'medium',timeStyle:'short'}))} · ${fmt(s.dur)}</small></div><button data-rm="${esc(s.id)}">Slett</button></li>`).join('')||'<li>Ingen opptak.</li>';
+  const items=DB.sessions.filter(s=>s.id===S.id||s.segments.length||s.title||s.notes.length).filter(s=>!q||(s.title+' '+s.segments.map(x=>x.text).join(' ')+' '+s.notes.map(n=>n.text+' '+(n.answer||'')).join(' ')).toLowerCase().includes(q)).sort((a,b)=>b.created.localeCompare(a.created));
+  $('list').innerHTML=items.map(s=>`<li data-open="${esc(s.id)}" class="${s.id===S.id?'cur':''}"><div><b>${esc(s.title||'Uten tittel')}</b><small>${esc(new Date(s.created).toLocaleString('no-NO',{dateStyle:'medium',timeStyle:'short'}))} · ${fmt(s.dur)}</small></div><button data-rm="${esc(s.id)}">Slett</button></li>`).join('')||'<li>Ingen opptak.</li>';
 }
 
 /* ---------- Gemini ---------- */
@@ -194,12 +216,14 @@ function status(msg){$('state').textContent=msg||(on?(pending?`Tar opp · ${pend
 
 // Live: nettleserens talegjenkjenning (Chrome på PC/Mac/Android, Safari)
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let sr=null,segStart=0;
-function liveStart(){
+let previews=[],interimTxt='';
+const renderPreview=()=>{$('interim').textContent=[...previews.map(p=>p.text),interimTxt].join(' ').trim()};
+function liveStart(previewOnly){
   sr=new SR();sr.lang='nb-NO';sr.continuous=true;sr.interimResults=true;
-  sr.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){addSeg(r[0].transcript,segStart);segStart=now()}else interim+=r[0].transcript}
-    if(!interim)segStart=now();$('interim').textContent=interim};
+  sr.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){if(previewOnly)previews.push({t:segStart,text:r[0].transcript.trim()});else addSeg(r[0].transcript,segStart);segStart=now()}else interim+=r[0].transcript}
+    if(!interim)segStart=now();interimTxt=interim;renderPreview()};
   sr.onerror=e=>{if(e.error==='not-allowed'){stop();status('Mikrofon ikke tillatt')}};
-  sr.onend=()=>{if(on&&$('engine').value==='live'){try{sr.start()}catch(e){}}};
+  sr.onend=()=>{if(on&&$('engine').value!=='gemini'){try{sr.start()}catch(e){}}};
   segStart=now();sr.start();
 }
 // Gemini: tar opp i biter og sender som 16 kHz WAV
@@ -215,19 +239,24 @@ async function toWav(blob){
 function piece(){
   const chunks=[],at=now();mr=new MediaRecorder(stream);
   mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType});if(on)piece();if(blob.size<2000)return;pending++;status();
-    queue=queue.then(async()=>{try{const t=await gemini([{text:'Transkriber talen i dette lydklippet ordrett på norsk. Svar kun med teksten. Er det ingen tydelig tale, svar med en tom streng.'},{inline_data:{mime_type:'audio/wav',data:await toWav(blob)}}]);addSeg(t,at)}catch(e){addSeg('(feil: '+e.message+')',at)}pending--;status()})};
+  mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType}),end=now();if(on)piece();if(blob.size<2000)return;pending++;status();
+    queue=queue.then(async()=>{
+      const mine=()=>previews.filter(p=>p.t<end);
+      try{const t=await gemini([{text:'Transkriber talen i dette lydklippet på norsk. Skriv det som blir sagt så ordrett som mulig, men med riktig tegnsetting og hele setninger. Svar kun med teksten. Er det ingen tydelig tale, svar med en tom streng.'},{inline_data:{mime_type:'audio/wav',data:await toWav(blob)}}]);addSeg(t,at)}
+      catch(e){const fb=mine().map(p=>p.text).join(' ');addSeg(fb?fb+' (live-tekst, Gemini feilet)':'(feil: '+e.message+')',at)}
+      previews=previews.filter(p=>p.t>=end);renderPreview();pending--;status()})};
   mr.start();cut=setTimeout(()=>mr.state==='recording'&&mr.stop(),Math.max(10,+DB.settings.chunk||20)*1000);
 }
 async function start(){
   const eng=$('engine').value;
   if(eng==='live'&&!SR){status('Live støttes ikke her. Velg Gemini.');return}
-  if(eng==='gemini'){if(!DB.settings.key){$('settings').showModal();return}
+  if(eng!=='live'){if(!DB.settings.key){renderKey();$('keyQuick').focus();status('Legg inn Gemini-nøkkelen først');return}
     try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){status('Fikk ikke tilgang til mikrofonen');return}}
   on=true;t0=Date.now()-S.dur*1000;$('rec').textContent='Stopp';$('rec').classList.add('on');$('engine').disabled=true;
   tick=setInterval(()=>{S.dur=now();$('clock').textContent=fmt(S.dur)},1000);
   try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
-  if(eng==='live')liveStart();else piece();
+  previews=[];interimTxt='';
+  if(eng==='live')liveStart(false);else{piece();if(eng==='hybrid'&&SR)liveStart(true)}
   status();
 }
 function stop(){
@@ -235,7 +264,9 @@ function stop(){
   try{sr&&sr.stop()}catch(e){}
   if(mr&&mr.state==='recording')mr.stop();stream&&stream.getTracks().forEach(t=>t.stop());
   try{wake&&wake.release()}catch(e){}
-  $('interim').textContent='';$('rec').textContent='Start';$('rec').classList.remove('on');$('engine').disabled=false;status();
+  interimTxt='';renderPreview();$('rec').textContent='Start';$('rec').classList.remove('on');$('engine').disabled=false;status();
+  // Oppsummer automatisk når siste bit er transkribert
+  queue=queue.then(()=>{if(S.segments.length||S.notes.length)return summarize()});
 }
 document.addEventListener('visibilitychange',async()=>{if(on&&document.visibilityState==='visible'){try{wake=await navigator.wakeLock?.request('screen')}catch(e){}}});
 
@@ -257,6 +288,7 @@ function transcriptForAI(){
 }
 async function summarize(){
   if(!S.segments.length&&!S.notes.length){$('sum').textContent='Ingen tekst å oppsummere ennå.';return}
+  if(!DB.settings.key){renderKey();$('sum').innerHTML='<span class="st">Legg inn Gemini-nøkkelen øverst for å få oppsummering.</span>';return}
   $('sumBtn').disabled=true;$('sum').innerHTML='<span class="st">Oppsummerer …</span>';
   const prompt=`Du lager referat av et opptak på norsk. Det kan være et møte, seminar, konferanse, foredrag eller en samtale. Transkripsjonen er automatisk (kan ha feilhørte ord, ingen talernavn). Linjer merket [MITT NOTAT] og [MITT SPØRSMÅL] er brukerens egne notater, knyttet til det som ble sagt rett før.
 
@@ -275,7 +307,7 @@ ${transcriptForAI()}`;
   try{
     let raw=await gemini([{text:prompt}],true);raw=raw.replace(/^```(json)?|```$/g,'').trim();
     const m=JSON.parse(raw);S.summary=m;if(!S.title.trim()&&m.title){S.title=m.title;$('title').value=S.title}
-    save();renderSummary();
+    save();renderSummary();renderList();
   }catch(e){$('sum').innerHTML=`<span class="st">Feil: ${esc(e.message)}</span>`}
   $('sumBtn').disabled=false;
 }
@@ -289,17 +321,18 @@ function exportText(){
 }
 
 /* ---------- Hendelser ---------- */
-$('engine').value=DB.settings.engine==='gemini'||!SR?'gemini':'live';
+$('engine').value=['hybrid','gemini','live'].includes(DB.settings.engine)?DB.settings.engine:'hybrid';
+if(!SR&&$('engine').value==='live')$('engine').value='gemini';
 $('engine').addEventListener('change',()=>{DB.settings.engine=$('engine').value;save()});
 $('rec').addEventListener('click',()=>on?stop():start());
-$('newBtn').addEventListener('click',()=>{if(on)stop();S=newSession();DB.sessions.push(S);DB.current=S.id;anchor=null;save();$('archive').classList.add('hide');$('session').classList.remove('hide');renderAll();status();$('title').focus()});
-$('archBtn').addEventListener('click',()=>{const a=$('archive');a.classList.toggle('hide');if(!a.classList.contains('hide')){renderList();$('search').focus()}});
+$('newBtn').addEventListener('click',()=>{if(on)stop();S=newSession();DB.sessions.push(S);DB.current=S.id;anchor=null;save();renderAll();status();window.scrollTo({top:0});$('title').focus()});
+$('keySave').addEventListener('click',()=>{const k=$('keyQuick').value.trim();if(!k)return;DB.settings.key=k;save();renderKey();status('Nøkkel lagret')});
 $('search').addEventListener('input',renderList);
 $('list').addEventListener('click',e=>{
   const rm=e.target.closest('[data-rm]');
   if(rm){e.stopPropagation();if(rm.dataset.sure!=='1'){rm.dataset.sure='1';rm.textContent='Sikker?';return}
     DB.sessions=DB.sessions.filter(s=>s.id!==rm.dataset.rm);if(S.id===rm.dataset.rm){S=newSession();DB.sessions.push(S);DB.current=S.id;renderAll()}save();renderList();return}
-  const o=e.target.closest('[data-open]');if(o&&!on){S=DB.sessions.find(s=>s.id===o.dataset.open);DB.current=S.id;anchor=null;save();$('archive').classList.add('hide');renderAll();window.scrollTo({top:0})}
+  const o=e.target.closest('[data-open]');if(o&&!on){S=DB.sessions.find(s=>s.id===o.dataset.open);DB.current=S.id;anchor=null;save();renderAll();window.scrollTo({top:0})}
 });
 $('title').addEventListener('input',()=>{S.title=$('title').value;save()});
 $('tx').addEventListener('click',e=>{
@@ -314,7 +347,7 @@ $('anchorClr').addEventListener('click',()=>{anchor=null;renderTx();renderAnchor
 $('sumBtn').addEventListener('click',summarize);
 $('copyBtn').addEventListener('click',()=>navigator.clipboard.writeText(exportText()).then(()=>status('Kopiert')).catch(()=>status('Kunne ikke kopiere')));
 $('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('settings').showModal()});
-$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;save();$('settings').close()});
+$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;save();renderKey();$('settings').close()});
 renderAll();status();
 }
 </script>

@@ -205,10 +205,10 @@ section .scroll{background:var(--surface);border:1px solid var(--line);border-ra
 </head><body>
 <form class="login" id="loginform" hidden>
   <h1>Gjøreliste</h1>
-  <p>Logg inn med e-postadressen din. Du får en lenke og en kode på e-post.</p>
+  <p>Logg inn med e-postadressen din. Du får en innloggingslenke på e-post.</p>
   <input id="email" type="email" autocomplete="email" placeholder="E-post" required aria-label="E-post">
   <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Kode fra e-posten" hidden aria-label="Kode">
-  <button class="btn primary">Send kode</button>
+  <button class="btn primary">Send lenke</button>
   <p id="loginmsg" role="status"></p>
 </form>
 <div class="wrap" id="app" hidden>
@@ -725,8 +725,8 @@ LF.onsubmit=async e=>{e.preventDefault();const email=LE.value.trim().toLowerCase
     LM.textContent="Sender …";
     const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
     if(error){LM.textContent="Feil: "+error.message;return}
-    LC.hidden=false;LC.focus();LF.querySelector("button").textContent="Logg inn";
-    LM.textContent="Sjekk e-posten. Trykk på lenken, eller skriv inn koden her.";
+    LF.querySelector("button").textContent="Send ny lenke";
+    LM.textContent="Sjekk e-posten og trykk på lenken. Den åpner lista her.";
   }else{
     const token=LC.value.replace(/\s/g,"");if(!token)return;LM.textContent="Logger inn …";
     const {error}=await sb.auth.verifyOtp({email,token,type:"email"});

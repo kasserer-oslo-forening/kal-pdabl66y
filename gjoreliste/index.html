@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="no"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Gjøreliste</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#f5f6f4; --surface:#ffffff; --fg:#1d2420; --muted:#5d6862; --line:#dde2de;
+  --accent:#1e6b55; --accent-soft:#e2efe9; --warn:#a8650b; --warn-soft:#fbefdc; --crit:#b3261e; --crit-soft:#fbe4e2;
+  --star:#b7791f;
+  --display:"Space Grotesk",system-ui,sans-serif; --body:"Source Sans 3",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#131816; --surface:#1b211e; --fg:#e7ece9; --muted:#9aa6a0; --line:#2c3531;
+  --accent:#5fc3a2; --accent-soft:#1d3a30; --warn:#e3a54a; --warn-soft:#3a2c17; --crit:#f08a80; --crit-soft:#3d1f1d; --star:#f0c060; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#131816; --surface:#1b211e; --fg:#e7ece9; --muted:#9aa6a0; --line:#2c3531;
+  --accent:#5fc3a2; --accent-soft:#1d3a30; --warn:#e3a54a; --warn-soft:#3a2c17; --crit:#f08a80; --crit-soft:#3d1f1d; --star:#f0c060; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 var(--body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 96px}
+.wrap{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:1.6rem}
+h2{font-size:1.05rem}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.today{color:var(--muted);font-size:.95rem}
+.score{display:flex;align-items:center;gap:10px;font:500 .8rem var(--mono);color:var(--muted)}
+.days{display:flex;gap:4px}
+.score .hero{display:flex;flex-direction:column;align-items:center;background:var(--accent-soft);border-radius:14px;padding:8px 14px;min-width:96px}
+#ptsbig{font:800 2.6rem/1 var(--display);color:var(--accent);display:inline-block}
+.score .hero small{font:600 .7rem var(--mono);color:var(--muted);margin-top:2px}
+.score .hero.goaldone{background:var(--accent);}
+.score .hero.goaldone #ptsbig,.score .hero.goaldone small{color:var(--surface)}
+.score .side{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.goal{width:150px;height:9px;background:var(--line);border-radius:5px;overflow:hidden}
+.goal i{display:block;height:100%;width:0;background:var(--accent);transition:width .7s ease}
+.plus{position:fixed;top:70px;right:28px;font:800 2rem var(--display);color:var(--accent);pointer-events:none;z-index:60;animation:plusup 1.4s ease-out forwards}
+@keyframes plusup{0%{opacity:0;transform:translateY(12px) scale(.7)}20%{opacity:1;transform:translateY(0) scale(1.25)}100%{opacity:0;transform:translateY(-60px) scale(1)}}
+.bump{animation:bump .6s ease}
+@keyframes bump{40%{transform:scale(1.35)}}
+@media (prefers-reduced-motion: reduce){.plus,.bump{animation:none}}
+.days i{width:12px;height:12px;border-radius:3px;background:var(--line)}
+.days i.on{background:var(--accent)}
+.days i.now{outline:2px solid var(--accent);outline-offset:1px}
+nav.tabs{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;gap:4px;overflow-x:auto;padding:6px 0;margin:0 -2px;scrollbar-width:none}
+nav.tabs button{flex:none;font:600 .9rem var(--body);color:var(--muted);background:transparent;border:1px solid transparent;border-radius:999px;padding:7px 13px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg);border-color:var(--line)}
+nav.tabs .n{font:500 .72rem var(--mono);margin-left:5px;padding:1px 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+.filters{display:flex;flex-direction:column;gap:6px}
+.chips{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;align-items:center;scrollbar-width:none}
+.chips span{font-size:.82rem;color:var(--muted);flex:none;width:52px}
+.chip{flex:none}
+.chip{font:500 .82rem var(--body);background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:4px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.strip{display:flex;flex-direction:column;gap:4px;background:var(--accent-soft);border-radius:8px;padding:10px 12px;font-size:.92rem}
+.strip b{font-family:var(--display);font-weight:600}
+.scorecard{display:flex;align-items:center;gap:16px;background:var(--accent-soft);border-radius:12px;padding:14px 16px}
+.scorecard .big{display:flex;flex-direction:column;align-items:center;min-width:84px}
+.scorecard .big span{font:700 2.4rem/1 var(--display);color:var(--accent)}
+.scorecard .big small{font:500 .72rem var(--mono);color:var(--muted)}
+.scorecard .sub{display:flex;flex-direction:column;gap:2px;font-size:.92rem}
+.scorecard .sub span{color:var(--muted);font-size:.84rem}
+.log li .pts{font:600 .8rem var(--mono);color:var(--accent);margin-left:auto;white-space:nowrap}
+.log li .winsrc{font:500 .72rem var(--mono);color:var(--muted);font-style:normal}
+ul.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+li.card{display:grid;grid-template-columns:44px 1fr;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:10px;transition:opacity .3s,transform .3s}
+li.card.lead{border:2px solid var(--accent)}
+li.card.leaving{opacity:0;transform:translateX(24px)}
+.chk{width:44px;height:44px;border:0;background:transparent;cursor:pointer;display:grid;place-items:center;padding:0}
+.chk::before{content:"";width:22px;height:22px;border-radius:50%;border:2px solid var(--muted);transition:background .2s}
+.chk:hover::before{border-color:var(--accent);background:var(--accent-soft)}
+.chk.on::before{background:var(--accent);border-color:var(--accent)}
+.main{padding:10px 12px 10px 0;cursor:pointer;min-width:0}
+.tt{font-weight:600}
+.lead .tt{font-size:1.08rem}
+.badge{font:600 .68rem var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:2px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:3px;font-size:.82rem;color:var(--muted)}
+.meta .due{font-family:var(--mono);font-weight:500}
+.meta .due.today{color:var(--crit)}
+.meta .due.soon{color:var(--warn)}
+.meta .star{color:var(--star)}
+.more{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.more p{margin:0;color:var(--muted);font-size:.93rem;max-width:62ch}
+.acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.acts .lbl{font-size:.78rem;color:var(--muted);width:100%;margin-top:2px}
+.btn{font:600 .82rem var(--body);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:7px;padding:6px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--surface);border-color:var(--accent)}
+.btn.quiet{color:var(--muted)}
+input[type=date].btn{padding:4px 8px}
+select.btn{padding:5px 8px}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--fg);font-family:var(--display);font-size:1.1rem;margin-bottom:4px}
+.more-btn{align-self:flex-start}
+.grp{font:600 .75rem var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 2px}
+.add{display:flex;gap:6px}
+.add input{flex:1;min-width:0;font:16px var(--body);padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg)}
+details.proj{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+details.proj summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+details.proj summary::-webkit-details-marker{display:none}
+.ph{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.ph span{font:500 .78rem var(--mono);color:var(--muted);white-space:nowrap}
+.pbar{height:5px;background:var(--line);border-radius:3px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--accent)}
+.pnext{font-size:.88rem;color:var(--muted)}
+details.proj .inner{padding:0 10px 12px;display:flex;flex-direction:column;gap:8px}
+details.proj .inner>p{margin:0 4px;color:var(--muted);font-size:.9rem}
+details.ctx{border:1px dashed var(--line);border-radius:8px;padding:6px 10px;font-size:.88rem;color:var(--muted)}
+details.ctx summary{cursor:pointer;font-weight:600}
+details.ctx .ctxt{white-space:pre-wrap;margin-top:6px;color:var(--fg)}
+details.ctx .ctxd{font:500 .72rem var(--mono);margin-top:4px}
+.src{border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:8px;font-size:.88rem;cursor:default}
+.srch{font:600 .72rem var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.srci{display:flex;flex-direction:column;gap:2px}
+.srcat{font:500 .74rem var(--mono);color:var(--muted)}
+.src blockquote{margin:2px 0;padding:2px 0 2px 8px;border-left:2px solid var(--line);color:var(--fg);white-space:pre-wrap}
+.row{display:grid;grid-template-columns:1fr auto;gap:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;align-items:start}
+.row.due{border-color:var(--warn)}
+.row .who{font-weight:600}
+.row p{margin:2px 0 0;color:var(--muted);font-size:.9rem}
+.row .d{font:500 .8rem var(--mono);color:var(--muted);white-space:nowrap;text-align:right}
+.row .acts{grid-column:1/-1}
+.ev{display:grid;grid-template-columns:86px 1fr;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)}
+.ev .d{font:500 .82rem var(--mono);color:var(--muted)}
+.ev.past{opacity:.5}
+.ev.now .d{color:var(--crit)}
+.ev small{display:block;color:var(--muted)}
+.log li{display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:.93rem}
+.log li s{color:var(--muted)}
+.log ul{list-style:none;margin:0;padding:0}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);border-radius:10px;padding:10px 14px;display:flex;gap:14px;align-items:center;font-weight:600;box-shadow:0 6px 24px rgba(0,0,0,.2);z-index:20;max-width:calc(100% - 32px)}
+.toast button{font:600 .9rem var(--body);background:transparent;color:var(--bg);border:1px solid currentColor;border-radius:6px;padding:4px 10px;cursor:pointer}
+.sync{font-size:.8rem;color:var(--muted)}
+.help{font-size:.88rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
+.help summary{cursor:pointer;font-weight:600;color:var(--fg)}
+.help ul{margin:8px 0 0;padding-left:18px}
+.confetti{position:fixed;inset:0;pointer-events:none;z-index:30;overflow:hidden}
+.confetti i{position:absolute;bottom:-10px;width:8px;height:12px;border-radius:2px;animation:fly 1.4s ease-out forwards}
+@keyframes fly{to{transform:translate(var(--x),-90vh) rotate(540deg);opacity:0}}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){li.card,.chk::before{transition:none}.confetti{display:none}}
+
+.meet{background:var(--surface);border:2px solid var(--warn);border-radius:12px;padding:12px 12px 14px;display:flex;flex-direction:column;gap:6px}
+.meet .badge{color:var(--warn)}
+.mh{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.mc{font:500 .8rem var(--mono);color:var(--muted);white-space:nowrap}
+ul.agenda{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+ul.agenda li{display:grid;grid-template-columns:44px 1fr;align-items:start;border-top:1px solid var(--line);padding:2px 0}
+ul.agenda li>div{padding:10px 4px 8px 0}
+ul.agenda .tt{font-weight:600;font-size:.97rem}
+ul.agenda li.ok .tt{text-decoration:line-through;color:var(--muted)}
+.aw{font-size:.86rem;color:var(--muted);margin-top:2px}
+ul.saker{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+li.sak{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.meet li.sak{background:var(--bg)}
+li.sak.ok{border-color:var(--accent)}
+.sh2{cursor:pointer}
+.kind{font:600 .7rem var(--mono);text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.kind.orientering{background:var(--line);color:var(--muted)}
+.kind.sjekk{background:var(--warn-soft);color:var(--warn)}
+.ned{display:flex;flex-direction:column;gap:8px}
+.ned textarea,.search{width:100%;font:15px/1.45 var(--body);padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);resize:vertical}
+.files{display:flex;flex-wrap:wrap;gap:6px}
+.file{font-size:.85rem;padding:4px 9px;border-radius:7px;background:var(--accent-soft);color:var(--accent);text-decoration:none}
+span.file{background:var(--line);color:var(--muted)}
+label.btn{display:inline-block;align-self:flex-start}
+/* Bakgrunn (gamle seksjoner) */
+section{display:flex;flex-direction:column;gap:10px}
+.sh{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.sh h2{font-size:1.05rem}
+.sh span{font:500 .78rem var(--mono);color:var(--muted)}
+details.task{background:var(--surface);border:1px solid var(--line);border-radius:8px}
+details.task summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;padding:12px 14px}
+details.task summary::-webkit-details-marker{display:none}
+.t{font-weight:600;min-width:0}
+.t small{display:block;font-weight:400;color:var(--muted);font-size:.9rem}
+.pill{font:500 .72rem var(--mono);padding:2px 7px;border-radius:999px;white-space:nowrap;background:var(--accent-soft);color:var(--accent)}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:7px;border:2px solid var(--muted)}
+.body{padding:0 14px 14px 34px;display:flex;flex-direction:column;gap:10px}
+.body p{margin:0;color:var(--muted);font-size:.95rem;max-width:65ch}
+.body ul{margin:0;padding-left:18px}
+.draft{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:12px;font-size:.92rem;white-space:pre-wrap;overflow-x:auto}
+button.copy{align-self:flex-start;font:600 .85rem var(--body);background:var(--accent);color:var(--surface);border:0;border-radius:6px;padding:6px 12px;cursor:pointer}
+.note{font-size:.9rem;color:var(--muted);border-left:3px solid var(--warn);padding-left:10px}
+table.t{width:100%;border-collapse:collapse;font-size:.9rem}
+table.t th,table.t td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t th{font:600 .75rem var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.scroll{overflow-x:auto}
+section .scroll{background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.ok{color:var(--accent)} .warn-t{color:var(--warn)} .crit-t{color:var(--crit)}
+.links{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem}
+.inst{display:flex;flex-direction:column;gap:12px}
+.inst div{border-left:3px solid var(--line);padding-left:10px}
+
+.login{max-width:420px;margin:12vh auto 0;display:flex;flex-direction:column;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+.login input{font:16px var(--body);padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.login p{margin:0;color:var(--muted);font-size:.92rem}
+.sync{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head><body>
+<form class="login" id="loginform" hidden>
+  <h1>Gjøreliste</h1>
+  <p>Logg inn med e-postadressen din. Du får en lenke og en kode på e-post.</p>
+  <input id="email" type="email" autocomplete="email" placeholder="E-post" required aria-label="E-post">
+  <input id="code" inputmode="numeric" autocomplete="one-time-code" placeholder="Kode fra e-posten" hidden aria-label="Kode">
+  <button class="btn primary">Send kode</button>
+  <p id="loginmsg" role="status"></p>
+</form>
+<div class="wrap" id="app" hidden>
+  <header class="top">
+    <div id="todayline" hidden></div>
+    <div class="score"><div class="hero" id="hero"><b id="ptsbig">0</b><small>poeng i dag</small></div><div class="side"><span id="donecount"></span><div class="goal" title="Dagsmål"><i id="goalbar"></i></div><div class="days" id="days" aria-label="Dager med noe gjort, siste 7"></div></div></div>
+  </header>
+
+  <nav class="tabs" role="tablist" id="tabs">
+    <button role="tab" data-v="naa">Nå</button>
+    <button role="tab" data-v="proj">Prosjekter</button>
+    <button role="tab" data-v="vent">Venter</button>
+    <button role="tab" data-v="dato">Datoer</button>
+    <button role="tab" data-v="notat">Notater</button>
+    <button role="tab" data-v="gjort">Gjort</button>
+    <button role="tab" data-v="bak">Bakgrunn</button>
+  </nav>
+
+  <main id="view"></main>
+  <div class="sync" id="sync"><span>Kobler til …</span><span><span id="who"></span> · <button class="btn quiet" id="logout">Logg ut</button></span></div>
+</div>
+<script>
+(function(){
+"use strict";
+let DATA={projects:[],tasks:[],waiting:[],events:[],meetings:[]};
+const PEOPLE=["Henning","Odin","Jørgen","Stian","Erling"];
+const WD=["søn","man","tir","ons","tor","fre","lør"];
+const WDL=["søndag","mandag","tirsdag","onsdag","torsdag","fredag","lørdag"];
+const MON=["januar","februar","mars","april","mai","juni","juli","august","september","oktober","november","desember"];
+const PRAISE=["Én mindre.","Unnagjort.","Bra jobba.","Det var den.","Godt. Neste?","Ferdig med den.","Sånn ja."];
+const pad=n=>String(n).padStart(2,"0");
+const iso=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parse=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
+const add=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return iso(d)};
+const diff=(a,b)=>Math.round((parse(a)-parse(b))/864e5);
+const TODAY=iso(new Date());
+const fmt=s=>{const d=parse(s);return WD[d.getDay()]+" "+d.getDate()+"."+(d.getMonth()+1)+(d.getFullYear()!==parse(TODAY).getFullYear()?"."+d.getFullYear():"")};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const nextMonday=()=>{const d=parse(TODAY);const k=(8-d.getDay())%7||7;d.setDate(d.getDate()+k);return iso(d)};
+let MEET={};
+const mDate=(m,hm)=>{const d=parse(m.d);const[h,mi]=(hm||"23:59").split(":").map(Number);d.setHours(h,mi);return d};
+const meetOver=m=>new Date()>mDate(m,m.end||m.time);
+let PROJ={};
+
+/* ---------- tilstand ---------- */
+let S={}, ROWS={tasks:{},waiting:{}};
+let view="naa", showAll=false, openId=null, openProj=new Set(), CTX={}, WINS={}, LASTP=null, LASTACT=0;
+const GOAL=100;
+function showPts(p){const el=document.getElementById("ptsbig");if(!el)return;
+  if(LASTP===null||p<=LASTP||Date.now()-LASTACT>5000||matchMedia("(prefers-reduced-motion: reduce)").matches){el.textContent=p;LASTP=p;return}
+  const from=LASTP,t0=performance.now();LASTP=p;el.classList.remove("bump");void el.offsetWidth;el.classList.add("bump");
+  const step=now=>{const k=Math.min(1,(now-t0)/700);el.textContent=Math.round(from+(p-from)*k);if(k<1)requestAnimationFrame(step)};requestAnimationFrame(step);
+  const pl=document.createElement("div");pl.className="plus";pl.textContent="+"+(p-from);document.body.appendChild(pl);setTimeout(()=>pl.remove(),1500);
+  if(from<GOAL&&p>=GOAL){setTimeout(()=>{confetti();setTimeout(confetti,350);toast("Dagsmålet på "+GOAL+" poeng er nådd!")},500)}}
+/* ---------- poeng ---------- */
+function ptsTask(t){if(!t||t.hist)return 10;return ({0:10,1:20,2:30}[t.i||0]||10)+Math.min(30,Math.round((t.m||0)/3))}
+function ptsOf(id){return ptsTask(allTasks().find(x=>x.id===id))}
+function dayStats(day){let n=0,p=0;Object.entries(S).forEach(([id,s])=>{let k=(s.log||[]).filter(x=>x===day).length;if(s.done&&s.doneAt&&s.doneAt.slice(0,10)===day&&!(s.log||[]).includes(day))k++;n+=k;p+=k*ptsOf(id)});Object.values(WINS).forEach(w=>{if(w.d===day){n++;p+=w.pts||15}});return{n,p}}
+function ctxBox(id,label){const c=CTX[id];if(!c||!c.tekst)return null;const d=document.createElement("details");d.className="ctx";d.onclick=e=>e.stopPropagation();d.innerHTML="<summary>"+(label||"Kontekst")+"</summary><div class=\"ctxt\">"+esc(c.tekst)+"</div>"+(c.oppdatert?"<div class=\"ctxd\">Oppdatert "+esc(c.oppdatert)+"</div>":"");return d}
+function srcBox(t){const L=t.src||[];const D=(t.docs||[]).filter(x=>x.url);if(!L.length&&!D.length)return null;const d=document.createElement("div");d.className="src";d.onclick=e=>e.stopPropagation();let h='<div class="srch">Hvor kommer dette fra</div>';L.forEach(s=>{h+='<div class="srci">'+((s.at||s.who)?'<span class="srcat">'+esc([s.at,s.who,s.k].filter(Boolean).join(" · "))+'</span>':'')+(s.q?'<blockquote>'+esc(s.q)+'</blockquote>':'')+(s.url?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.t||"Åpne")+'</a>':(s.t?'<span>'+esc(s.t)+'</span>':''))+'</div>'});if(D.length)h+='<div class="files">'+D.map(x=>'<a class="file" href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.t)+'</a>').join("")+'</div>';d.innerHTML=h;return d}
+
+const st=id=>S[id]||{};
+function put(id,patch,silent){
+  const prev=Object.assign({},st(id));
+  S[id]=Object.assign({},prev,patch);
+  Object.keys(S[id]).forEach(k=>{if(S[id][k]===null)delete S[id][k]});
+  pushState(id,patch);
+  if(!silent)render();
+  return prev;
+}
+function restore(id,prev){const cur=st(id),patch={};STATE_KEYS.forEach(k=>{patch[k]=k in prev?prev[k]:null});Object.keys(cur).forEach(k=>{if(!(k in prev))patch[k]=null});S[id]=Object.assign({},prev);pushState(id,patch);render()}
+
+/* ---------- utvalg ---------- */
+function allTasks(){return DATA.tasks}
+function purrDate(w){const s=st(w.id);return s.snooze&&s.snooze>w.purr?s.snooze:w.purr}
+function delegItems(){return allTasks().filter(t=>{const s=st(t.id);return s.deleg&&!s.done&&!s.drop})}
+function isOpen(t){if(t.hist)return false;const s=st(t.id);if(s.done||s.drop||s.deleg)return false;if(t.mt&&MEET[t.mt]&&(MEET[t.mt].brief||!meetOver(MEET[t.mt])))return false;if(t.after&&MEET[t.after]&&!meetOver(MEET[t.after]))return false;if(t.s&&t.s>TODAY)return false;if(s.snooze&&s.snooze>TODAY)return false;return true}
+function dueOf(t){const s=st(t.id);let d=(t.e&&s.next)?s.next:t.d;if(s.snooze&&!t.purr&&(!d||s.snooze>d))d=s.snooze;if(!d)d=String(t.s||t.at||TODAY).slice(0,10);return d}
+function purrTasks(){
+  const out=[];
+  DATA.waiting.forEach(w=>{const s=st(w.id);if(s.answered||s.drop)return;const p=purrDate(w);if(p<=TODAY)out.push({id:w.id,t:"Purr "+w.who,w:w.what,p:"vent",c:"Melding",m:5,i:1,d:p,purr:true})});
+  delegItems().forEach(t=>{const s=st(t.id);const p=s.delegPurr||add(s.delegAt||TODAY,3);if(p<=TODAY)out.push({id:t.id,t:"Sjekk med "+s.deleg+": "+t.t,w:"Du ga oppgaven til "+s.deleg+" "+fmt(s.delegAt||TODAY)+".",p:t.p,c:"Melding",m:5,i:1,d:p,purrDeleg:true})});
+  return out;
+}
+function bucket(t){
+  const s=st(t.id),d=dueOf(t);
+  if(s.star===-1)return 6;
+  if(d&&d<=TODAY)return 0;
+  if(s.star===1)return 1;
+  if(d&&diff(d,TODAY)<=2)return 2;
+  if(t.i===2)return 3;
+  if(d)return 4;
+  return 5;
+}
+function sorter(a,b){
+  const x=bucket(a),y=bucket(b);if(x!==y)return x-y;
+  const da=dueOf(a)||"9999",dbb=dueOf(b)||"9999";if(da!==dbb)return da<dbb?-1:1;
+  if((b.i||0)!==(a.i||0))return (b.i||0)-(a.i||0);
+  return (a.m||0)-(b.m||0);
+}
+
+
+function openList(){return allTasks().filter(isOpen).concat(purrTasks()).sort(sorter)}
+
+/* ---------- belønning ---------- */
+function doneDates(){
+  const m={};
+  Object.values(S).forEach(s=>{(s.log||[]).forEach(d=>m[d]=(m[d]||0)+1);if(s.done&&s.doneAt){const d=s.doneAt.slice(0,10);if(!(s.log||[]).includes(d))m[d]=(m[d]||0)+1}});
+  Object.values(WINS).forEach(w=>{if(w.d)m[w.d]=(m[w.d]||0)+1});
+  return m;
+}
+function header(){
+  const d=parse(TODAY);
+  document.getElementById("todayline").textContent=WDL[d.getDay()]+" "+d.getDate()+". "+MON[d.getMonth()];
+  const m=doneDates();const n=m[TODAY]||0;
+  let streak=0;for(let i=0;i<60;i++){const k=add(TODAY,-i);if(m[k])streak++;else if(i>0)break}
+  const ds=dayStats(TODAY);
+  document.getElementById("donecount").textContent=ds.n+" gjort"+(ds.p>=GOAL?" · dagsmålet nådd!":" · "+(GOAL-ds.p)+" til dagsmålet")+(streak>1?" · "+streak+" dager på rad":"");
+  document.getElementById("goalbar").style.width=Math.min(100,ds.p/GOAL*100)+"%";
+  document.getElementById("hero").classList.toggle("goaldone",ds.p>=GOAL);
+  showPts(ds.p);
+  const box=document.getElementById("days");box.innerHTML="";
+  for(let i=6;i>=0;i--){const k=add(TODAY,-i);const el=document.createElement("i");if(m[k])el.className="on";if(i===0)el.classList.add("now");el.title=fmt(k)+": "+(m[k]||0)+" gjort";box.appendChild(el)}
+  const due=purrTasks().length;
+  document.querySelector('#tabs [data-v="vent"]').innerHTML="Venter"+(due?'<span class="n">'+due+" å purre</span>":"");
+}
+function confetti(){
+  const c=document.createElement("div");c.className="confetti";
+  const cols=["#1e6b55","#5fc3a2","#e3a54a","#b3261e","#7aa7e0"];
+  for(let i=0;i<26;i++){const p=document.createElement("i");p.style.left=(10+Math.random()*80)+"%";p.style.background=cols[i%cols.length];p.style.setProperty("--x",(Math.random()*240-120)+"px");p.style.animationDelay=(Math.random()*.25)+"s";c.appendChild(p)}
+  document.body.appendChild(c);setTimeout(()=>c.remove(),1800);
+}
+let toastT=null;
+function toast(msg,undo){
+  document.querySelectorAll(".toast").forEach(x=>x.remove());clearTimeout(toastT);
+  const t=document.createElement("div");t.className="toast";t.setAttribute("role","status");
+  t.innerHTML="<span>"+esc(msg)+"</span>";
+  if(undo){const b=document.createElement("button");b.textContent="Angre";b.onclick=()=>{undo();t.remove()};t.appendChild(b)}
+  document.body.appendChild(t);toastT=setTimeout(()=>t.remove(),6000);
+}
+
+/* ---------- handlinger ---------- */
+function complete(t,li){
+  LASTACT=Date.now();
+  const go=()=>{
+    let prev;
+    if(t.purr){prev=put(t.id,{snooze:add(TODAY,3),purred:TODAY,log:(st(t.id).log||[]).concat(TODAY)});toast("Purret. Jeg minner deg på nytt "+fmt(add(TODAY,3))+".",()=>restore(t.id,prev));return}
+    if(t.purrDeleg){prev=put(t.id,{delegPurr:add(TODAY,3),log:(st(t.id).log||[]).concat(TODAY)});toast("Sjekket. Ny påminnelse "+fmt(add(TODAY,3))+".",()=>restore(t.id,prev));return}
+    if(t.e){prev=put(t.id,{next:add(TODAY,t.e),snooze:add(TODAY,t.e),log:(st(t.id).log||[]).concat(TODAY)})}
+    else prev=put(t.id,{done:true,doneAt:new Date().toISOString()});
+    const n=doneDates()[TODAY]||0;
+    const left=openList().filter(x=>bucket(x)===0).length;
+    let msg=PRAISE[Math.floor(Math.random()*PRAISE.length)];
+    if(left===0&&bucket(t)===0)msg="Alt som hastet i dag er gjort.";
+    else if(n%5===0)msg=n+" gjort i dag. Sterkt.";
+    confetti();
+    toast(msg+" +"+ptsTask(t)+" poeng",()=>restore(t.id,prev));
+  };
+  if(li&&!matchMedia("(prefers-reduced-motion: reduce)").matches){li.classList.add("leaving");li.querySelector(".chk").classList.add("on");setTimeout(go,300)}else go();
+}
+function card(t,lead){
+  const s=st(t.id),d=dueOf(t);
+  const li=document.createElement("li");li.className="card"+(lead?" lead":"");li.dataset.id=t.id;
+  const chk=document.createElement("button");chk.className="chk";chk.setAttribute("aria-label",t.purr||t.purrDeleg?"Merk som purret":"Merk som gjort");
+  chk.onclick=e=>{e.stopPropagation();complete(t,li)};
+  const main=document.createElement("div");main.className="main";main.tabIndex=0;main.setAttribute("role","button");main.setAttribute("aria-expanded",openId===t.id);
+  let dueTxt="",dueCls="";
+  if(d){const k=diff(d,TODAY);dueTxt=k<=0?"i dag":k===1?"i morgen":fmt(d);dueCls=k<=0?"today":k<=2?"soon":""}
+  main.innerHTML=(lead?'<span class="badge">Start her</span>':"")+'<div class="tt">'+esc(t.t)+'</div><div class="meta">'+
+    (s.star===1?'<span class="star">★ viktig</span>':"")+
+    (d?'<span class="due '+dueCls+'">'+dueTxt+"</span>":"")+
+    (t.m?"<span>"+(t.m>=60?(t.m/60).toString().replace(".",",")+" t":t.m+" min")+"</span>":"")+
+    (t.c?"<span>"+esc(t.c)+"</span>":"")+
+    (PROJ[t.p]&&view!=="proj"?"<span>"+esc(PROJ[t.p].n)+"</span>":"")+"</div>";
+  if(openId===t.id){
+    const more=document.createElement("div");more.className="more";
+    if(t.w)more.insertAdjacentHTML("beforeend","<p>"+esc(t.w)+"</p>");
+    {const sb=srcBox(t);if(sb)more.appendChild(sb)}
+    {const cb=ctxBox(t.id);if(cb)more.appendChild(cb)}
+    const a=document.createElement("div");a.className="acts";
+    const B=(txt,fn,cls)=>{const b=document.createElement("button");b.className="btn "+(cls||"");b.textContent=txt;b.onclick=e=>{e.stopPropagation();fn()};a.appendChild(b);return b};
+    if(t.purr){
+      B("Har svart",()=>{const p=put(t.id,{answered:true,answeredAt:TODAY});toast("Fint. Fjernet fra Venter.",()=>restore(t.id,p))},"primary");
+    }
+    if(t.purrDeleg){
+      B("Ferdig",()=>{const p=put(t.id,{done:true,doneAt:new Date().toISOString()});toast("Ferdig – godt delegert.",()=>restore(t.id,p))},"primary");
+      B("Tilbake til meg",()=>put(t.id,{deleg:null,delegAt:null,delegPurr:null}));
+    }
+    if(!t.purr&&!t.purrDeleg){
+      B(s.star===1?"★ Viktig":"☆ Viktig for meg",()=>put(t.id,{star:s.star===1?0:1}),s.star===1?"on":"");
+      B("↓ Kan vente",()=>put(t.id,{star:s.star===-1?0:-1}),s.star===-1?"on":"");
+    }
+    a.insertAdjacentHTML("beforeend",'<span class="lbl">Utsett til</span>');
+    const sn=(n,label)=>B(label,()=>{const to=typeof n==="string"?n:add(TODAY,n);const p=t.purr?put(t.id,{snooze:to}):t.purrDeleg?put(t.id,{delegPurr:to}):put(t.id,{snooze:to});openId=null;render();toast("Utsatt til "+fmt(to)+".",()=>restore(t.id,p))});
+    sn(1,"I morgen");sn(nextMonday(),"Mandag");sn(7,"Om en uke");
+    const di=document.createElement("input");di.type="date";di.className="btn";di.min=add(TODAY,1);di.setAttribute("aria-label","Velg dato");
+    di.onclick=e=>e.stopPropagation();di.onchange=()=>{if(di.value){const p=t.purrDeleg?put(t.id,{delegPurr:di.value}):put(t.id,{snooze:di.value});openId=null;render();toast("Utsatt til "+fmt(di.value)+".",()=>restore(t.id,p))}};a.appendChild(di);
+    if(!t.purr&&!t.purrDeleg){
+      a.insertAdjacentHTML("beforeend",'<span class="lbl">Gi til</span>');
+      PEOPLE.forEach(p=>B(p,()=>{const pv=put(t.id,{deleg:p,delegAt:TODAY,delegPurr:add(TODAY,3)});openId=null;render();toast("Gitt til "+p+". Ligger under Venter, og jeg minner deg på "+fmt(add(TODAY,3))+".",()=>restore(t.id,pv))}));
+      a.insertAdjacentHTML("beforeend",'<span class="lbl"></span>');
+      B("Ikke aktuelt – stryk",()=>{const p=put(t.id,{drop:true,doneAt:new Date().toISOString()});toast("Strøket.",()=>restore(t.id,p))},"quiet");
+    }
+    more.appendChild(a);main.appendChild(more);
+  }
+  const toggle=()=>{openId=openId===t.id?null:t.id;render()};
+  main.onclick=e=>{if(e.target.closest(".more"))return;toggle()};
+  main.onkeydown=e=>{if((e.key==="Enter"||e.key===" ")&&e.target===main){e.preventDefault();toggle()}};
+  li.append(chk,main);
+  return li;
+}
+
+/* ---------- visninger ---------- */
+function meetBlock(root,m){
+  if(m.brief)return briefBlock(root,m);
+  const items=DATA.tasks.filter(t=>t.mt===m.id);
+  const box=document.createElement("section");box.className="meet";
+  const when=m.d===TODAY?"I dag kl. "+m.time:fmt(m.d)+" kl. "+m.time;
+  const done=items.filter(t=>st(t.id).done||st(t.id).drop).length;
+  box.innerHTML='<div class="mh"><div><span class="badge">Møte '+esc(when)+'</span><h2>'+esc(m.t)+'</h2><div class="today">'+esc(m.where||"")+(m.link?' · <a href="'+esc(m.link)+'" target="_blank" rel="noopener">'+esc(m.linkt||"Dokument")+"</a>":"")+'</div></div><span class="mc">'+done+" av "+items.length+'</span></div><div class="grp">'+(m.brief?'Sakene – kort brief':'Ta opp på møtet – kryss av når det er avklart')+'</div>';
+  const ul=document.createElement("ul");ul.className="agenda";
+  items.forEach(t=>{const s=st(t.id),ok=s.done||s.drop;const li=document.createElement("li");if(ok)li.className="ok";
+    const b=document.createElement("button");b.className="chk"+(ok?" on":"");b.setAttribute("aria-label",ok?"Angre":"Avklart");
+    b.onclick=()=>{if(ok)put(t.id,{done:null,doneAt:null,drop:null});else put(t.id,{done:true,doneAt:new Date().toISOString()})};
+    const tx=document.createElement("div");tx.innerHTML='<div class="tt">'+esc(t.t)+"</div>"+(t.w?'<div class="aw">'+esc(t.w)+"</div>":"");
+    li.append(b,tx);ul.appendChild(li)});
+  if(m.brief&&diff(m.d,TODAY)>1&&openId!=="M"+m.id){ul.hidden=true;const bt=document.createElement("button");bt.className="btn more-btn";bt.textContent="Vis sakene ("+items.length+")";bt.onclick=()=>{openId="M"+m.id;render()};box.appendChild(bt);}
+  box.appendChild(ul);
+  const after=DATA.tasks.filter(t=>t.after===m.id);
+  if(after.length)box.insertAdjacentHTML("beforeend",'<div class="aw" style="padding:6px 4px 0">Etter møtet dukker dette opp i lista: '+after.map(t=>esc(t.t.charAt(0).toLowerCase()+t.t.slice(1))).join("; ")+". Det som ikke blir avklart, blir egne oppgaver.</div>");
+  root.appendChild(box);
+}
+/* ---------- notater, standpunkt og vedlegg ---------- */
+let NOTES={}, noteTimers={};
+const KIND={vedtak:"Avgjøres",sjekk:"Du må sjekke noe",orientering:"Til orientering – ingen handling"};
+const note=id=>NOTES[id]||{};
+function saveNote(id,patch,rerender){
+  const t=DATA.tasks.find(x=>x.id===id);
+  NOTES[id]=Object.assign({title:t?t.t:(note(id).title||id),meeting:t&&t.mt&&MEET[t.mt]?MEET[t.mt].t+" "+fmt(MEET[t.mt].d):(note(id).meeting||""),kind:t?(t.kind||""):(note(id).kind||"tema")},note(id),patch,{updatedAt:new Date().toISOString()});
+  sb.from("notes").upsert({id,data:NOTES[id],updated_at:new Date().toISOString()}).then(({error})=>setSync(!error));
+  if(rerender)render();
+}
+function fileLinks(id){
+  const f=note(id).files||[];
+  return f.map(x=>'<span class="file">'+esc(x.name||"Fil")+"</span>").join("");
+}
+function noteEditor(id,opts){
+  const n=note(id), wrap=document.createElement("div");wrap.className="ned";
+  if(opts&&opts.length){
+    const r=document.createElement("div");r.className="acts";r.insertAdjacentHTML("beforeend",'<span class="lbl">Mitt standpunkt</span>');
+    opts.concat(["Usikker"]).forEach(o=>{const b=document.createElement("button");b.className="btn"+(n.stand===o?" on":"");b.textContent=o;b.onclick=e=>{e.stopPropagation();saveNote(id,{stand:n.stand===o?"":o},true)};r.appendChild(b)});
+    wrap.appendChild(r);
+  }
+  const ta=document.createElement("textarea");ta.id="note-"+id;ta.rows=3;ta.placeholder="Notater, argumenter, hva du vil si eller spørre om …";ta.value=n.text||"";
+  ta.onclick=e=>e.stopPropagation();
+  ta.oninput=()=>{clearTimeout(noteTimers[id]);noteTimers[id]=setTimeout(()=>saveNote(id,{text:ta.value}),700)};
+  wrap.appendChild(ta);
+  const fl=document.createElement("div");fl.className="files";fl.innerHTML=fileLinks(id);wrap.appendChild(fl);
+  const sv=document.createElement("div");sv.className="aw";sv.textContent="Lagres automatisk. Claude kan lese notatene dine senere.";wrap.appendChild(sv);
+  return wrap;
+}
+function briefBlock(root,m){
+  const items=DATA.tasks.filter(t=>t.mt===m.id);
+  const act=items.filter(t=>t.kind!=="orientering");
+  const doneN=act.filter(t=>note(t.id).status).length;
+  const box=document.createElement("section");box.className="meet";
+  const when=m.d===TODAY?"I dag kl. "+m.time:fmt(m.d)+" kl. "+m.time;
+  box.innerHTML='<div class="mh"><div><span class="badge">Møte '+esc(when)+'</span><h2>'+esc(m.t)+'</h2><div class="today">'+esc(m.where||"")+(m.link?' · <a href="'+esc(m.link)+'" target="_blank" rel="noopener">'+esc(m.linkt||"Sakspapirene")+"</a>":"")+'</div></div><span class="mc">'+doneN+" av "+act.length+' gjennomgått</span></div>';
+  const show=diff(m.d,TODAY)<=1||openId==="M"+m.id||items.some(t=>openId==="N"+t.id);
+  if(!show){const bt=document.createElement("button");bt.className="btn more-btn";bt.textContent="Vis sakene ("+items.length+")";bt.onclick=()=>{openId="M"+m.id;render()};box.appendChild(bt);root.appendChild(box);return}
+  const ul=document.createElement("ul");ul.className="saker";
+  items.forEach(t=>{
+    const n=note(t.id),li=document.createElement("li"),k=t.kind||"vedtak",open=openId==="N"+t.id;
+    li.className="sak "+k+(n.status?" ok":"");
+    const head=document.createElement("div");head.className="sh2";head.tabIndex=0;head.setAttribute("role","button");head.setAttribute("aria-expanded",open);
+    const stat=k==="orientering"?"":n.status==="ok"?"Lest – ingen merknader":n.status==="merk"?"Har merknader":"Ikke sett på";
+    head.innerHTML='<div class="tt">'+esc(t.t)+'</div><div class="meta"><span class="kind '+k+'">'+KIND[k]+"</span>"+(stat?"<span>"+stat+"</span>":"")+(n.stand?'<span class="star">Standpunkt: '+esc(n.stand)+"</span>":"")+((n.files||[]).length?"<span>"+n.files.length+" filer</span>":"")+(n.text?"<span>notat</span>":"")+"</div>";
+    head.onclick=()=>{openId=open?"M"+m.id:"N"+t.id;render()};head.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();head.click()}};
+    li.appendChild(head);
+    if(open){
+      const body=document.createElement("div");body.className="more";
+      if(t.w)body.insertAdjacentHTML("beforeend","<p>"+esc(t.w)+"</p>");
+      if(t.docs&&t.docs.length)body.insertAdjacentHTML("beforeend",'<div class="files">'+t.docs.map(d=>d.url?'<a class="file" href="'+esc(d.url)+'" target="_blank" rel="noopener">'+esc(d.t)+"</a>":'<span class="file">'+esc(d.t)+"</span>").join("")+"</div>");
+      if(k!=="orientering"){
+        const r=document.createElement("div");r.className="acts";r.insertAdjacentHTML("beforeend",'<span class="lbl">Gjennomgått?</span>');
+        [["ok","Lest – ingen merknader"],["merk","Har merknader"]].forEach(([v,l])=>{const b=document.createElement("button");b.className="btn"+(n.status===v?" on":"");b.textContent=l;b.onclick=e=>{e.stopPropagation();saveNote(t.id,{status:n.status===v?"":v},true)};r.appendChild(b)});
+        body.appendChild(r);
+      }
+      body.appendChild(noteEditor(t.id,t.opts));
+      li.appendChild(body);
+    }
+    ul.appendChild(li);
+  });
+  box.appendChild(ul);
+  if(diff(m.d,TODAY)>1){const bt=document.createElement("button");bt.className="btn more-btn quiet";bt.textContent="Skjul sakene";bt.onclick=()=>{openId=null;render()};box.appendChild(bt);}
+  root.appendChild(box);
+}
+function vNotat(root){
+  root.insertAdjacentHTML("beforeend",'<p class="today">Alt du har notert, valgt eller lastet opp – til møtesaker og egne temaer. Claude kan lese dette og svare på spørsmål om det senere.</p>');
+  const f=document.createElement("form");f.className="add";f.innerHTML='<input id="newtopic" placeholder="Nytt tema, for eksempel «Kjernekraft»" maxlength="120" aria-label="Nytt tema"><button class="btn primary">Opprett</button>';
+  f.onsubmit=e=>{e.preventDefault();const v=f.querySelector("input").value.trim();if(!v)return;const id="tema-"+Date.now().toString(36);saveNote(id,{title:v,kind:"tema",meeting:""});openId="N"+id;render()};
+  root.appendChild(f);
+  const q=document.createElement("input");q.id="notesearch";q.className="search";q.placeholder="Søk i notater";q.value=window.__nq||"";q.oninput=()=>{window.__nq=q.value;clearTimeout(window.__nqt);window.__nqt=setTimeout(()=>{render();const x=document.getElementById("notesearch");if(x){x.focus();x.setSelectionRange(x.value.length,x.value.length)}},250)};
+  root.appendChild(q);
+  const qq=(window.__nq||"").toLowerCase();
+  const ids=Object.keys(NOTES).filter(id=>{const n=NOTES[id];return !qq||[n.title,n.text,n.meeting,n.stand].join(" ").toLowerCase().includes(qq)}).sort((a,b)=>(NOTES[b].updatedAt||"")>(NOTES[a].updatedAt||"")?1:-1);
+  if(!ids.length){root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Ingen notater ennå</b>Skriv i en møtesak, eller opprett et tema over.</div>');return}
+  const ul=document.createElement("ul");ul.className="saker";
+  ids.forEach(id=>{const n=NOTES[id],t=DATA.tasks.find(x=>x.id===id),open=openId==="N"+id;const li=document.createElement("li");li.className="sak";
+    const head=document.createElement("div");head.className="sh2";head.tabIndex=0;head.setAttribute("role","button");
+    head.innerHTML='<div class="tt">'+esc(n.title||id)+'</div><div class="meta">'+(n.meeting?"<span>"+esc(n.meeting)+"</span>":'<span class="kind tema">Tema</span>')+(n.stand?'<span class="star">Standpunkt: '+esc(n.stand)+"</span>":"")+((n.files||[]).length?"<span>"+n.files.length+" filer</span>":"")+"<span>endret "+(n.updatedAt?fmt(n.updatedAt.slice(0,10)):"")+"</span></div>";
+    head.onclick=()=>{openId=open?null:"N"+id;render()};li.appendChild(head);
+    if(open){const body=document.createElement("div");body.className="more";if(t&&t.w)body.insertAdjacentHTML("beforeend","<p>"+esc(t.w)+"</p>");body.appendChild(noteEditor(id,t&&t.opts));li.appendChild(body)}
+    ul.appendChild(li)});
+  root.appendChild(ul);
+}
+
+function vNaa(root){
+  (DATA.meetings||[]).filter(m=>diff(m.d,TODAY)>=0&&diff(m.d,TODAY)<=(m.brief?7:1)&&!meetOver(m)&&DATA.tasks.some(t=>t.mt===m.id&&!st(t.id).done&&!st(t.id).drop)).forEach(m=>meetBlock(root,m));
+  const all=openList(), list=all;
+  const urgent=list.filter(t=>bucket(t)===0).length;
+  const N=Math.max(5,Math.min(urgent,7));
+  if(!list.length){root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Ingenting her akkurat nå</b>'+"Alt er gjort. Ta fri."+"</div>")}
+  else{
+    const h=document.createElement("h2");h.textContent=urgent?"Gjør disse først":"Neste";root.appendChild(h);
+    const ul=document.createElement("ul");ul.className="list";
+    list.slice(0,N).forEach((t,i)=>ul.appendChild(card(t,i===0)));
+    root.appendChild(ul);
+    const rest=list.slice(N);
+    if(urgent===0&&list.length&&bucket(list[0])>0){root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Alt som må gjøres i dag er gjort.</b>Resten er frivillig – ta én til hvis du har overskudd.</div>')}
+    if(rest.length){
+      if(!showAll){const b=document.createElement("button");b.className="btn more-btn";b.textContent="Vis resten ("+rest.length+")";b.onclick=()=>{showAll=true;render()};root.appendChild(b)}
+      else{
+        const groups=[["Denne uka",t=>dueOf(t)&&diff(dueOf(t),TODAY)<=(7-parse(TODAY).getDay())%7],["Neste uke",t=>dueOf(t)&&diff(dueOf(t),TODAY)<=((7-parse(TODAY).getDay())%7)+7],["Senere",t=>!!dueOf(t)],["Uten dato",()=>true]];
+        const used=new Set();
+        groups.forEach(([name,fn])=>{const g=rest.filter(t=>!used.has(t.id)&&st(t.id).star!==-1&&fn(t));if(!g.length)return;g.forEach(t=>used.add(t.id));root.insertAdjacentHTML("beforeend",'<div class="grp">'+name+" · "+g.length+"</div>");const u=document.createElement("ul");u.className="list";g.forEach(t=>u.appendChild(card(t)));root.appendChild(u)});
+        const low=rest.filter(t=>!used.has(t.id));if(low.length){root.insertAdjacentHTML("beforeend",'<div class="grp">Kan vente · '+low.length+"</div>");const u=document.createElement("ul");u.className="list";low.forEach(t=>u.appendChild(card(t)));root.appendChild(u)}
+        const b=document.createElement("button");b.className="btn more-btn quiet";b.textContent="Skjul resten";b.onclick=()=>{showAll=false;render();scrollTo(0,0)};root.appendChild(b);
+      }
+    }
+  }
+  // utsatt
+  const sn=allTasks().filter(t=>{const s=st(t.id);return !s.done&&!s.drop&&!s.deleg&&!t.e&&s.snooze&&s.snooze>TODAY});
+  if(sn.length){const d=document.createElement("details");d.className="help";d.innerHTML="<summary>Utsatt ("+sn.length+")</summary>";const u=document.createElement("ul");sn.forEach(t=>{const li=document.createElement("li");li.innerHTML=esc(t.t)+" – kommer tilbake "+fmt(st(t.id).snooze)+" ";const b=document.createElement("button");b.className="btn";b.textContent="Hent tilbake nå";b.onclick=()=>put(t.id,{snooze:null});li.appendChild(b);u.appendChild(li)});d.appendChild(u);root.appendChild(d)}
+  // legg til
+  const a=document.createElement("form");a.className="add";a.innerHTML='<input id="newt" placeholder="Noe du må huske? Skriv det inn her" aria-label="Ny oppgave" maxlength="200"><button class="btn primary">Legg til</button>';
+  a.onsubmit=async e=>{e.preventDefault();const inp=a.querySelector("input");const v=inp.value.trim();if(!v)return;const id="u"+Date.now().toString(36);
+    const row={id,t:v,p:"inn",i:1,m:0,needs_triage:true,origin:"web"};
+    const {error}=await sb.from("tasks").insert(row);
+    if(error){toast("Kunne ikke lagre: "+error.message);return}
+    inp.value="";addRow("tasks",Object.assign({created_at:new Date().toISOString(),done:false,dropped:false,log:[],docs:[],src:[]},row));render();toast("Lagt til. Jeg sorterer den inn snart.")};
+  root.appendChild(a);
+  root.insertAdjacentHTML("beforeend",'<details class="help"><summary>Slik bruker du lista</summary><ul><li>Gjør oppgavene ovenfra. Den med grønn ramme er den viktigste akkurat nå.</li><li>Trykk på sirkelen når noe er gjort. Oppgaven forsvinner, og du kan angre i noen sekunder.</li><li>Trykk på teksten for detaljer, og for å markere den som viktig, utsette den, gi den til noen eller stryke den.</li><li>Det du venter på fra andre, ligger under Venter. Det dukker opp her bare når du må purre.</li><li>Det du skriver inn selv, sorterer jeg inn med dag, prioritet og kilde – i løpet av en time.</li></ul></details>');
+}
+function vProj(root){
+  const tasks=allTasks();
+  DATA.projects.forEach(([k,n,s])=>{
+    const all=tasks.filter(t=>t.p===k&&!t.e&&!t.hist);const hjem=tasks.filter(t=>t.p===k&&t.e&&!t.hist);
+    if(!all.length&&!hjem.length)return;
+    const done=all.filter(t=>st(t.id).done||st(t.id).drop).length;
+    const open=all.filter(t=>!st(t.id).done&&!st(t.id).drop&&!st(t.id).deleg).concat(hjem).sort(sorter);
+    const d=document.createElement("details");d.className="proj";if(openProj.has(k)||(openId&&open.some(t=>t.id===openId)))d.open=true;d.addEventListener("toggle",()=>{if(d.open)openProj.add(k);else openProj.delete(k)});
+    const nx=open.find(isOpen)||open[0];
+    d.innerHTML='<summary><div class="ph"><h2>'+esc(n)+"</h2><span>"+(all.length?done+" av "+all.length:"gjentas")+'</span></div><div class="pbar"><i style="width:'+(all.length?done/all.length*100:0)+'%"></i></div>'+(nx?'<div class="pnext">Neste: '+esc(nx.t)+"</div>":'<div class="pnext">Ferdig</div>')+"</summary>";
+    const inner=document.createElement("div");inner.className="inner";if(s)inner.insertAdjacentHTML("beforeend","<p>"+esc(s)+"</p>");{const cb=ctxBox("p-"+k,"Kontekst for prosjektet");if(cb)inner.appendChild(cb)}
+    const u=document.createElement("ul");u.className="list";open.forEach(t=>u.appendChild(card(t)));inner.appendChild(u);d.appendChild(inner);root.appendChild(d);
+  });
+}
+function vVent(root){
+  root.insertAdjacentHTML("beforeend",'<p class="today">Dette er ikke dine oppgaver. Når datoen kommer, dukker en purring opp under Nå.</p>');
+  const rows=[];
+  DATA.waiting.forEach(w=>{const s=st(w.id);if(s.answered||s.drop)return;rows.push({id:w.id,who:w.who,what:w.what,p:purrDate(w),w:true})});
+  delegItems().forEach(t=>{const s=st(t.id);rows.push({id:t.id,who:s.deleg,what:t.t,p:s.delegPurr||add(s.delegAt||TODAY,3),deleg:true})});
+  rows.sort((a,b)=>a.p<b.p?-1:1);
+  if(!rows.length)root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Du venter ikke på noen.</b></div>');
+  rows.forEach(r=>{
+    const el=document.createElement("div");el.className="row"+(r.p<=TODAY?" due":"");
+    el.innerHTML='<div><div class="who">'+esc(r.who)+(r.deleg?" (gitt av deg)":"")+"</div><p>"+esc(r.what)+'</p></div><div class="d">'+(r.p<=TODAY?"purr nå":"purr "+fmt(r.p))+"</div>";
+    const a=document.createElement("div");a.className="acts";
+    const B=(t,fn,c)=>{const b=document.createElement("button");b.className="btn "+(c||"");b.textContent=t;b.onclick=fn;a.appendChild(b)};
+    if(r.w){B("Har svart",()=>{const p=put(r.id,{answered:true,answeredAt:TODAY});toast("Fjernet.",()=>restore(r.id,p))},"primary");B("Purr senere",()=>put(r.id,{snooze:add(r.p>TODAY?r.p:TODAY,3)}))}
+    else{B("Ferdig",()=>{const p=put(r.id,{done:true,doneAt:new Date().toISOString()});toast("Ferdig.",()=>restore(r.id,p))},"primary");B("Tilbake til meg",()=>put(r.id,{deleg:null,delegAt:null,delegPurr:null}))}
+    el.appendChild(a);root.appendChild(el);
+  });
+}
+function vDato(root){
+  const items=DATA.events.map(e=>({d:e.d,t:e.t,w:e.w})).concat((DATA.meetings||[]).map(m=>({d:m.d,t:m.t+" kl. "+m.time,w:m.where})));
+  let month="";
+  items.sort((a,b)=>a.d<b.d?-1:1).forEach(e=>{
+    if(e.d<add(TODAY,-3))return;
+    const d=parse(e.d),m=MON[d.getMonth()]+" "+d.getFullYear();
+    if(m!==month){month=m;root.insertAdjacentHTML("beforeend",'<div class="grp">'+m+"</div>")}
+    root.insertAdjacentHTML("beforeend",'<div class="ev'+(e.d<TODAY?" past":e.d===TODAY?" now":"")+'"><span class="d">'+fmt(e.d)+"</span><div>"+esc(e.t)+(e.w?"<small>"+esc(e.w)+"</small>":"")+"</div></div>");
+  });
+  
+}
+function vGjort(root){
+  const rows=[];
+  allTasks().concat(DATA.waiting.map(w=>({id:w.id,t:w.who+": "+w.what}))).forEach(t=>{const s=st(t.id);
+    if(s.done||s.drop)rows.push({id:t.id,t:t.t,d:(s.doneAt||s.at||"").slice(0,10),drop:s.drop,p:s.drop?0:ptsTask(t)});
+    else if(s.answered)rows.push({id:t.id,t:t.t+" – svarte",d:s.answeredAt||(s.at||"").slice(0,10),p:ptsTask(t)});
+    (s.log||[]).forEach(d=>rows.push({id:t.id,t:t.t,d,rep:true,p:ptsTask(t)}));
+  });
+  Object.entries(WINS).forEach(([id,w])=>rows.push({id,t:w.t,d:w.d,win:true,src:w.src,p:w.pts||15}));
+  rows.sort((a,b)=>a.d<b.d?1:-1);
+  const td=dayStats(TODAY);let wk=0,best=0;
+  for(let i=0;i<7;i++)wk+=dayStats(add(TODAY,-i)).p;
+  for(let i=1;i<60;i++)best=Math.max(best,dayStats(add(TODAY,-i)).p);
+  const rec=td.p>0&&td.p>best;
+  root.insertAdjacentHTML("beforeend",'<div class="scorecard"><div class="big"><span>'+td.p+'</span><small>poeng i dag</small></div><div class="sub"><b>'+td.n+' ting gjort i dag'+(rec?' – ny rekord!':'')+'</b><span>'+wk+' poeng siste 7 dager · beste dag før i dag: '+best+'</span></div></div>');
+  if(!rows.length){root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Ingenting ennå</b>Det du krysser av, og det Claude ser at du har gjort, havner her.</div>');return}
+  const box=document.createElement("div");box.className="log";let day="";let ul=null;
+  rows.forEach(r=>{
+    if(r.d!==day){day=r.d;const sp=r.d?dayStats(r.d).p:0;box.insertAdjacentHTML("beforeend",'<div class="grp">'+(r.d===TODAY?"I dag":r.d?fmt(r.d):"")+(sp?" · "+sp+" poeng":"")+"</div>");ul=document.createElement("ul");box.appendChild(ul)}
+    const li=document.createElement("li");li.innerHTML="<span>"+(r.drop?"<s>"+esc(r.t)+"</s>":esc(r.t))+(r.win?' <em class="winsrc">ekstra'+(r.src?' · '+esc(r.src):'')+'</em>':'')+"</span>"+(r.p?'<b class="pts">+'+r.p+'</b>':'');
+    if(!r.rep&&!r.win){const b=document.createElement("button");b.className="btn quiet";b.textContent="Angre";b.onclick=()=>put(r.id,{done:null,drop:null,doneAt:null,answered:null,answeredAt:null});li.appendChild(b)}
+    ul.appendChild(li);
+  });
+  root.appendChild(box);
+}
+
+function render(){
+  header();
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.v===view));
+  const root=document.getElementById("view");root.innerHTML="";root.style.display="flex";root.style.flexDirection="column";root.style.gap="10px";
+  ({notat:vNotat,naa:vNaa,proj:vProj,vent:vVent,dato:vDato,gjort:vGjort,bak:vBak})[view](root);
+}
+document.getElementById("tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;view=b.dataset.v;openId=null;showAll=false;render();scrollTo(0,0)});
+
+/* ---------- kopier-knapper i Bakgrunn ---------- */
+document.addEventListener("click",ev=>{const btn=ev.target.closest("button.copy");if(!btn)return;
+  const el=document.getElementById(btn.dataset.copy);if(!el)return;
+  const done=()=>{btn.textContent="Kopiert";setTimeout(()=>btn.textContent="Kopier",1500)};
+  const fallback=()=>{const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent="Merket – kopier selv"};
+  try{navigator.clipboard.writeText(el.textContent).then(done,fallback)}catch(e){fallback()}
+});
+function vBak(root){const c=CONFIG.bakgrunn;if(!c||!c.tekst){root.insertAdjacentHTML("beforeend",'<div class="empty"><b>Ingen bakgrunn ennå</b>Claude legger ferdig forberedte tekster og tabeller her.</div>');return}
+  const d=document.createElement("div");d.innerHTML=c.tekst;root.appendChild(d)}
+
+/* ---------- lagring (Supabase) ---------- */
+const SB_URL="https://oqdjxiokzjepznvhbvkn.supabase.co", SB_KEY="sb_publishable_PxQBW9-6M1Xm3YKiSWI6ow_1XNsT0YH";
+const sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+let CONFIG={};
+const TMAP={done:"done",doneAt:"done_at",drop:"dropped",snooze:"snooze",star:"star",deleg:"deleg",delegAt:"deleg_at",delegPurr:"deleg_purr",log:"log",next:"next",note:"note"};
+const WMAP={answered:"answered",answeredAt:"answered_at",drop:"dropped",snooze:"snooze",purred:"purred",log:"log"};
+const STATE_KEYS=[...new Set(Object.keys(TMAP).concat(Object.keys(WMAP)))];
+const BOOL=new Set(["done","dropped","answered"]);
+const sync=document.getElementById("sync");
+function setSync(ok,msg){sync.querySelector("span").textContent=msg||(ok?"Lagret i databasen. Claude ser det du gjør i lista.":"Kunne ikke lagre – sjekk nettet og last siden på nytt.")}
+function stateOf(r,map){const s={};Object.entries(map).forEach(([k,col])=>{const v=r[col];if(v===null||v===undefined||v===false)return;if(Array.isArray(v)&&!v.length)return;s[k]=v});return s}
+function taskOf(r){
+  const hist=(r.done||r.dropped)&&!r.d&&!r.c&&!r.needs_triage;
+  const t={id:r.id,t:r.t,w:r.w||"",p:r.p||"inn",c:r.c||"",m:r.m||0,i:r.i==null?1:r.i,d:r.d||undefined,s:r.s||undefined,e:r.e||undefined,mt:r.mt||undefined,after:r.after||undefined,docs:r.docs||[],src:r.src||[],at:r.created_at,own:!!r.needs_triage,hist};
+  if(t.own&&!t.w)t.w="Lagt til "+(r.created_at?fmt(r.created_at.slice(0,10)):"")+". Jeg sorterer den inn snart.";
+  return t;
+}
+function rebuild(){
+  DATA.tasks=Object.values(ROWS.tasks).sort((a,b)=>(a.created_at||"")<(b.created_at||"")?-1:1).map(taskOf);
+  DATA.waiting=Object.values(ROWS.waiting).map(r=>({id:r.id,who:r.who||"",what:r.what||"",purr:r.purr||TODAY,src:r.src||[]}));
+  S={};
+  Object.values(ROWS.tasks).forEach(r=>{const s=stateOf(r,TMAP);if(Object.keys(s).length)S[r.id]=s});
+  Object.values(ROWS.waiting).forEach(r=>{const s=stateOf(r,WMAP);if(Object.keys(s).length)S[r.id]=s});
+  MEET={};(DATA.meetings||[]).forEach(m=>MEET[m.id]=m);
+  PROJ={};DATA.projects.forEach(([k,n,s],i)=>PROJ[k]={k,n,s,i});
+}
+function addRow(table,row){ROWS[table][row.id]=row;rebuild()}
+function pushState(id,patch){
+  const table=ROWS.waiting[id]?"waiting":"tasks", map=table==="waiting"?WMAP:TMAP, upd={};
+  Object.entries(patch).forEach(([k,v])=>{const col=map[k];if(!col)return;
+    if(v===null||v===undefined)v=BOOL.has(col)?false:col==="log"?[]:null;
+    upd[col]=v});
+  if(!Object.keys(upd).length)return;
+  upd.updated_at=new Date().toISOString();
+  if(ROWS[table][id])Object.assign(ROWS[table][id],upd);
+  sb.from(table).update(upd).eq("id",id).then(({error})=>setSync(!error));
+}
+const TABLES={
+  tasks:async()=>{const {data,error}=await sb.from("tasks").select("*");if(error)throw error;ROWS.tasks={};data.forEach(r=>ROWS.tasks[r.id]=r)},
+  waiting:async()=>{const {data,error}=await sb.from("waiting").select("*");if(error)throw error;ROWS.waiting={};data.forEach(r=>ROWS.waiting[r.id]=r)},
+  projects:async()=>{const {data,error}=await sb.from("projects").select("*").order("ord");if(error)throw error;DATA.projects=data.map(p=>[p.k,p.n,p.s||""])},
+  events:async()=>{const {data,error}=await sb.from("events").select("d,t,w").order("d");if(error)throw error;DATA.events=data},
+  meetings:async()=>{const {data,error}=await sb.from("meetings").select("*").order("d");if(error)throw error;DATA.meetings=data},
+  wins:async()=>{const {data,error}=await sb.from("wins").select("*");if(error)throw error;const m={};data.forEach(w=>m[w.id]={t:w.t,d:w.d,pts:w.pts,src:w.src});WINS=m},
+  ctx:async()=>{const {data,error}=await sb.from("ctx").select("*");if(error)throw error;const m={};data.forEach(c=>m[c.id]={tekst:c.tekst,oppdatert:c.oppdatert});CTX=m},
+  notes:async()=>{const {data,error}=await sb.from("notes").select("*");if(error)throw error;const m={};data.forEach(n=>m[n.id]=n.data||{});NOTES=m},
+  config:async()=>{const {data,error}=await sb.from("config").select("id,tekst,oppdatert").neq("id","instruks");if(error)throw error;const m={};data.forEach(c=>m[c.id]=c);CONFIG=m}
+};
+const busy=()=>{const a=document.activeElement;return document.querySelector(".toast")||(a&&(a.tagName==="TEXTAREA"||a.tagName==="INPUT"))};
+let pending=new Set(), reloadT=null;
+function reloadLater(t){pending.add(t);clearTimeout(reloadT);reloadT=setTimeout(async()=>{
+  if(busy()){reloadLater(t);return}
+  const list=[...pending];pending.clear();
+  try{await Promise.all(list.map(x=>TABLES[x]()));rebuild();render()}catch(e){setSync(false)}
+},600)}
+async function start(session){
+  document.getElementById("loginform").hidden=true;document.getElementById("app").hidden=false;
+  document.getElementById("who").textContent=session.user.email;
+  setSync(true,"Henter lista …");
+  try{await Promise.all(Object.values(TABLES).map(f=>f()))}catch(e){setSync(false,"Kunne ikke hente lista: "+(e.message||e));return}
+  rebuild();render();
+  if(!DATA.projects.length&&!DATA.tasks.length){setSync(false,"Denne e-postadressen har ikke tilgang til lista.");return}
+  setSync(true);
+  const ch=sb.channel("gjoreliste");
+  ["tasks","waiting","wins","ctx","events","meetings"].forEach(t=>ch.on("postgres_changes",{event:"*",schema:"public",table:t},()=>reloadLater(t)));
+  ch.subscribe();
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")Object.keys(TABLES).forEach(reloadLater)});
+}
+/* ---------- innlogging ---------- */
+const LF=document.getElementById("loginform"), LE=document.getElementById("email"), LC=document.getElementById("code"), LM=document.getElementById("loginmsg");
+try{LE.value=localStorage.getItem("gl-email")||""}catch(e){}
+LF.onsubmit=async e=>{e.preventDefault();const email=LE.value.trim().toLowerCase();if(!email)return;
+  if(LC.hidden){
+    try{localStorage.setItem("gl-email",email)}catch(e){}
+    LM.textContent="Sender …";
+    const {error}=await sb.auth.signInWithOtp({email,options:{emailRedirectTo:location.origin+location.pathname}});
+    if(error){LM.textContent="Feil: "+error.message;return}
+    LC.hidden=false;LC.focus();LF.querySelector("button").textContent="Logg inn";
+    LM.textContent="Sjekk e-posten. Trykk på lenken, eller skriv inn koden her.";
+  }else{
+    const token=LC.value.replace(/\s/g,"");if(!token)return;LM.textContent="Logger inn …";
+    const {error}=await sb.auth.verifyOtp({email,token,type:"email"});
+    if(error)LM.textContent="Feil kode: "+error.message;
+  }
+};
+document.getElementById("logout").onclick=async()=>{await sb.auth.signOut();location.reload()};
+let started=false;
+sb.auth.onAuthStateChange((ev,session)=>{if(session&&!started){started=true;start(session)}});
+sb.auth.getSession().then(({data})=>{if(data.session&&!started){started=true;start(data.session)}else if(!data.session){document.getElementById("loginform").hidden=false}});
+
+})();
+</script>
+</body></html>

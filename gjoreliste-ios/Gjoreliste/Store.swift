@@ -337,6 +337,7 @@ final class Store: ObservableObject {
     // MARK: Hurtigknapper
 
     func choreCount(_ chore: String) -> Int { chores.filter { $0.chore == chore }.count }
+    func choreToday(_ chore: String) -> Int { chores.filter { $0.chore == chore && $0.log_day == today }.count }
 
     func logChore(_ chore: String) async {
         let id = UUID().uuidString.lowercased()

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private let accent = Color(red: 0.12, green: 0.42, blue: 0.33)
 
@@ -97,18 +98,24 @@ struct MainView: View {
             }
             .refreshable { await store.load() }
             .toolbar {
-                // Vanlige ikonknapper havner i knapperaden på siden. Tallet vises som merke på ikonet.
+                // Vanlige ikonknapper havner i knapperaden på siden. Tallet for i dag tegnes inn i ikonet.
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { Task { await store.logChore("oppvask") } } label: {
-                        Label("Oppvask tatt", systemImage: "fork.knife")
+                        Label { Text("Oppvask tatt") } icon: {
+                            Image(uiImage: choreIcon("fork.knife", count: store.choreToday("oppvask")))
+                        }
                     }
-                    .badge(store.choreCount("oppvask"))
+                    .id("oppvask-\(store.choreToday("oppvask"))")
+                    .accessibilityValue("\(store.choreToday("oppvask")) i dag")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { Task { await store.logChore("soppel") } } label: {
-                        Label("Søpla er ute", systemImage: "trash.fill")
+                        Label { Text("Søpla er ute") } icon: {
+                            Image(uiImage: choreIcon("trash.fill", count: store.choreToday("soppel")))
+                        }
                     }
-                    .badge(store.choreCount("soppel"))
+                    .id("soppel-\(store.choreToday("soppel"))")
+                    .accessibilityValue("\(store.choreToday("soppel")) i dag")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: {
@@ -433,4 +440,30 @@ struct SettingsView: View {
         guard let d = ISO8601DateFormatter().date(from: clean) else { return "" }
         return out.string(from: d)
     }
+}
+
+
+/// Tegner hurtigknappens ikon med dagens antall som stort tall over symbolet.
+func choreIcon(_ symbol: String, count: Int) -> UIImage {
+    let size = CGSize(width: 30, height: 34)
+    let renderer = UIGraphicsImageRenderer(size: size)
+    let img = renderer.image { _ in
+        if count > 0 {
+            let num = "\(count)" as NSString
+            let font = UIFont.systemFont(ofSize: 17, weight: .heavy)
+            let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.black]
+            let ns = num.size(withAttributes: attrs)
+            num.draw(at: CGPoint(x: (size.width - ns.width) / 2, y: -2), withAttributes: attrs)
+            if let sym = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)) {
+                let r = CGRect(x: (size.width - sym.size.width) / 2, y: size.height - sym.size.height - 1,
+                               width: sym.size.width, height: sym.size.height)
+                sym.withTintColor(.black).draw(in: r)
+            }
+        } else if let sym = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)) {
+            let r = CGRect(x: (size.width - sym.size.width) / 2, y: (size.height - sym.size.height) / 2,
+                           width: sym.size.width, height: sym.size.height)
+            sym.withTintColor(.black).draw(in: r)
+        }
+    }
+    return img.withRenderingMode(.alwaysTemplate)
 }

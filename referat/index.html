@@ -136,6 +136,7 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
   <input id="vocab" placeholder="f.eks. LOK, Norsk Lokomotivmannsforbund, turnus, Vy">
   <label for="chunk">Sekunder per bit (Gemini)</label>
   <input id="chunk" type="number" min="10" max="60">
+  <details style="margin-top:12px"><summary class="st">Feilsøking</summary><div class="st" id="dbg" style="white-space:pre-wrap;word-break:break-all;font-size:12px;max-height:200px;overflow:auto"></div></details>
   <div style="margin-top:14px;text-align:right"><button id="setClose" class="pri">Ferdig</button></div>
 </dialog>
 
@@ -220,13 +221,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function txConfig(){const v=(DB.settings.vocab||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,100);
   const c={language_codes:['nb-NO'],mode:'smart'};if(v.length)c.custom_vocabulary=v;return {transcription_config:c}}
 function readInteraction(j){if(j.output_text)return j.output_text;
-  return (j.steps||[]).flatMap(st=>st.content||[]).map(c=>c.text||'').join(' ').trim()}
+  const steps=(j.steps||[]).filter(st=>!st.type||/output|model/i.test(st.type));
+  let t=steps.flatMap(st=>st.content||[]).map(c=>c.text||'').join(' ').trim();
+  if(!t&&Array.isArray(j.outputs))t=j.outputs.map(o=>o.text||'').join(' ').trim();
+  return t}
 async function interact(audioPart){
   const r=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',
     headers:{'Content-Type':'application/json','x-goog-api-key':DB.settings.key},
     body:JSON.stringify({model:'gemini-3.5-transcribe',input:[audioPart],generation_config:txConfig()})});
   let j={};try{j=await r.json()}catch(e){}
+  lastRaw=JSON.stringify(j).slice(0,3000);
   if(!r.ok){const e=new Error(j.error?.message||'HTTP '+r.status);e.status=r.status;throw e}
+  // Svaret kan komme før teksten er ferdig: vent og spør igjen til den er klar
+  const done=x=>['completed','succeeded','done'].includes(String(x.status||'').toLowerCase());
+  for(let i=0;i<40&&j.id&&!done(j)&&!readInteraction(j);i++){
+    if(['failed','cancelled','canceled','error'].includes(String(j.status||'').toLowerCase()))throw new Error('Transkripsjon feilet: '+(j.error?.message||j.status));
+    await sleep(1500);
+    const g=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions/'+encodeURIComponent(j.id),{headers:{'x-goog-api-key':DB.settings.key}});
+    try{j=await g.json()}catch(e){}lastRaw=JSON.stringify(j).slice(0,3000);
+  }
   return readInteraction(j);
 }
 async function uploadWav(bytes){
@@ -235,7 +248,7 @@ async function uploadWav(bytes){
   const up=await fetch(url,{method:'POST',headers:{'X-Goog-Upload-Offset':'0','X-Goog-Upload-Command':'upload, finalize'},body:bytes});
   const j=await up.json();if(!j.file?.uri)throw new Error('Opplasting feilet');return j.file.uri;
 }
-let txMode=null; // husker hva som virker: 'inline' | 'upload' | 'flash'
+let txMode=null,lastRaw=''; // husker hva som virker: 'inline' | 'upload' | 'flash'
 async function transcribe(b64,bytes){
   if(!DB.settings.key)throw new Error('Mangler API-nøkkel');
   let last;
@@ -254,7 +267,9 @@ const audioStore=new Map(); // lyd for biter som venter eller feilet (bare i min
 async function runChunk(seg){
   const a=audioStore.get(seg.id);if(!a)return;
   seg.status='wait';renderTx();
-  try{const t=await transcribe(a.b64,a.bytes);seg.text=(t||'').trim();delete seg.status;delete seg.tries;audioStore.delete(seg.id);
+  try{let t=(await transcribe(a.b64,a.bytes)||'').trim();
+    if(!t&&txMode!=='flash'){try{t=(await gemini([{text:'Transkriber talen i dette lydklippet på norsk, så ordrett som mulig med riktig tegnsetting. Svar kun med teksten. Er det ingen tale, svar med en tom streng.'},{inline_data:{mime_type:'audio/wav',data:a.b64}}])||'').trim()}catch(e){}}
+    seg.text=t;delete seg.status;delete seg.tries;audioStore.delete(seg.id);
     if(!seg.text)S.segments=S.segments.filter(x=>x!==seg)}
   catch(e){seg.status='fail';seg.err=e.message;seg.tries=(seg.tries||0)+1;if(seg.tries>=6)audioStore.delete(seg.id)}
   save();renderTx();
@@ -408,7 +423,7 @@ $('noteBtn').addEventListener('click',addNote);
 $('anchorClr').addEventListener('click',()=>{anchor=null;renderTx();renderAnchor()});
 $('sumBtn').addEventListener('click',summarize);
 $('copyBtn').addEventListener('click',()=>navigator.clipboard.writeText(exportText()).then(()=>status('Kopiert')).catch(()=>status('Kunne ikke kopiere')));
-$('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('vocab').value=DB.settings.vocab||'';$('settings').showModal()});
+$('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('vocab').value=DB.settings.vocab||'';$('dbg').textContent='Metode: '+(txMode||'ikke brukt ennå')+'\nSiste svar fra Google:\n'+(lastRaw||'–');$('settings').showModal()});
 $('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;DB.settings.vocab=$('vocab').value;save();renderKey();$('settings').close()});
 renderAll();status();
 }

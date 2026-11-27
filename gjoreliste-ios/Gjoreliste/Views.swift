@@ -97,13 +97,23 @@ struct MainView: View {
             }
             .refreshable { await store.load() }
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ChoreButton(chore: "oppvask", symbol: "fork.knife", label: "Oppvask tatt")
-                    ChoreButton(chore: "soppel", symbol: "trash.fill", label: "Søpla er ute")
-                    Button { showSettings = true } label: {
-                        Image(systemName: "ellipsis.circle")
+                // Vanlige ikonknapper havner i knapperaden på siden. Tallet vises som merke på ikonet.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await store.logChore("oppvask") } } label: {
+                        Label("Oppvask tatt", systemImage: "fork.knife")
                     }
-                    .accessibilityLabel("Innstillinger og historikk")
+                    .badge(store.choreCount("oppvask"))
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await store.logChore("soppel") } } label: {
+                        Label("Søpla er ute", systemImage: "trash.fill")
+                    }
+                    .badge(store.choreCount("soppel"))
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: {
+                        Label("Innstillinger og historikk", systemImage: "ellipsis.circle")
+                    }
                 }
             }
             .onChange(of: store.openTaskId) { _, _ in openRequested() }

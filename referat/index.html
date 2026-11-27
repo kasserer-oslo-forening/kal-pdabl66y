@@ -31,6 +31,8 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px so
 .engine{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:-2px 0 6px}
 .engine select{width:auto;border-radius:999px;min-height:40px}
 .preview{color:var(--mut);font-style:italic}
+.seg.fail div:last-child{color:var(--rec)}.seg.fail button{min-height:28px;padding:0 10px;font-size:13px;margin-left:8px}
+.seg.wait div:last-child{color:var(--mut);font-style:italic}
 .deck{display:flex;gap:14px;align-items:center;flex-wrap:wrap;background:var(--soft);border-radius:16px;padding:14px;margin:10px 0}
 #rec{width:76px;height:76px;border-radius:50%;border:0;background:var(--rec);color:#fff;flex:none}
 #rec.on{animation:p 1.4s infinite}
@@ -96,8 +98,8 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
   </div>
   <div class="engine"><label for="engine" class="st">Transkripsjon:</label>
     <select id="engine">
-      <option value="hybrid">Gemini + live forhåndsvisning (anbefalt)</option>
-      <option value="gemini">Bare Gemini</option>
+      <option value="hybrid">Gemini Transcribe + grå forhåndsvisning (anbefalt)</option>
+      <option value="gemini">Bare Gemini Transcribe</option>
       <option value="live">Bare nettleserens live (raskest, svakest)</option>
     </select>
   </div>
@@ -130,6 +132,8 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
   <input id="key" type="password" autocomplete="off">
   <label for="model">Modell</label>
   <input id="model">
+  <label for="vocab">Ord og navn som ofte brukes (komma mellom). Hjelper Gemini å høre dem riktig.</label>
+  <input id="vocab" placeholder="f.eks. LOK, Norsk Lokomotivmannsforbund, turnus, Vy">
   <label for="chunk">Sekunder per bit (Gemini)</label>
   <input id="chunk" type="number" min="10" max="60">
   <div style="margin-top:14px;text-align:right"><button id="setClose" class="pri">Ferdig</button></div>
@@ -151,6 +155,7 @@ const save=()=>{try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){}};
 const newSession=()=>({id:uid(),title:'',created:new Date().toISOString(),dur:0,segments:[],notes:[],summary:null});
 let S=DB.sessions.find(s=>s.id===DB.current);
 if(!S){S=newSession();DB.sessions.push(S);DB.current=S.id;save()}
+for(const x of DB.sessions)for(const g of x.segments)if(g.status==='wait')g.status='fail';
 
 /* ---------- Visning ---------- */
 let anchor=null;
@@ -160,7 +165,8 @@ function renderTx(){
     <div class="k"><span>${n.kind==='q'?'SPØRSMÅL':'NOTAT'} · ${fmt(n.t)}</span><button data-del="${esc(n.id)}">Slett</button></div>
     <div>${esc(n.text)}</div>
     ${n.kind==='q'?`<input data-ans="${esc(n.id)}" placeholder="Svar …" value="${esc(n.answer||'')}">`:''}</div>`;
-  let h=S.segments.map(s=>`<div class="seg ${anchor===s.id?'sel':''}" data-seg="${esc(s.id)}"><div class="t">${fmt(s.t)}</div><div>${esc(s.text)}</div></div>`+(notesBy[s.id]||[]).map(noteHTML).join('')).join('');
+  const body=s=>s.status==='wait'?'Transkriberer …':s.status==='fail'?`Klarte ikke å transkribere denne biten${audioStore.has(s.id)?'. Prøver igjen automatisk.':' (lyden er tapt).'}${audioStore.has(s.id)?`<button data-retry="${esc(s.id)}">Prøv nå</button>`:''}`:esc(s.text);
+  let h=S.segments.map(s=>`<div class="seg ${anchor===s.id?'sel':''} ${s.status||''}" data-seg="${esc(s.id)}"><div class="t">${fmt(s.t)}</div><div>${body(s)}</div></div>`+(notesBy[s.id]||[]).map(noteHTML).join('')).join('');
   h+=(notesBy['_end']||[]).map(noteHTML).join('');
   $('tx').innerHTML=h||'<div class="empty">Ingen tekst ennå. Trykk Start.</div>';
 }
@@ -197,7 +203,8 @@ async function gemini(parts,json){
   let last='Ukjent feil';
   for(const m of models){for(let a=0;a<3;a++){
     const body={contents:[{role:'user',parts}]};if(json)body.generationConfig={responseMimeType:'application/json'};
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':st.key},body:JSON.stringify(body)});
+    let r;try{r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':st.key},body:JSON.stringify(body)})}
+    catch(e){last='Nettverksfeil: '+e.message;await new Promise(res=>setTimeout(res,2000*(a+1)));continue}
     let j={};try{j=await r.json()}catch(e){}
     if(r.ok)return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
     last=m+': '+(j.error?.message||'HTTP '+r.status);
@@ -208,7 +215,53 @@ async function gemini(parts,json){
   throw new Error(last);
 }
 
+/* ---------- Transkripsjon: Gemini 3.5 Transcribe, reserve: vanlig Gemini ---------- */
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function txConfig(){const v=(DB.settings.vocab||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,100);
+  const c={language_codes:['nb-NO'],mode:'smart'};if(v.length)c.custom_vocabulary=v;return {transcription_config:c}}
+function readInteraction(j){if(j.output_text)return j.output_text;
+  return (j.steps||[]).flatMap(st=>st.content||[]).map(c=>c.text||'').join(' ').trim()}
+async function interact(audioPart){
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':DB.settings.key},
+    body:JSON.stringify({model:'gemini-3.5-transcribe',input:[audioPart],generation_config:txConfig()})});
+  let j={};try{j=await r.json()}catch(e){}
+  if(!r.ok){const e=new Error(j.error?.message||'HTTP '+r.status);e.status=r.status;throw e}
+  return readInteraction(j);
+}
+async function uploadWav(bytes){
+  const start=await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files',{method:'POST',headers:{'x-goog-api-key':DB.settings.key,'X-Goog-Upload-Protocol':'resumable','X-Goog-Upload-Command':'start','X-Goog-Upload-Header-Content-Length':String(bytes.length),'X-Goog-Upload-Header-Content-Type':'audio/wav','Content-Type':'application/json'},body:JSON.stringify({file:{display_name:'referat-bit'}})});
+  const url=start.headers.get('x-goog-upload-url');if(!url)throw new Error('Opplasting feilet');
+  const up=await fetch(url,{method:'POST',headers:{'X-Goog-Upload-Offset':'0','X-Goog-Upload-Command':'upload, finalize'},body:bytes});
+  const j=await up.json();if(!j.file?.uri)throw new Error('Opplasting feilet');return j.file.uri;
+}
+let txMode=null; // husker hva som virker: 'inline' | 'upload' | 'flash'
+async function transcribe(b64,bytes){
+  if(!DB.settings.key)throw new Error('Mangler API-nøkkel');
+  let last;
+  for(let a=0;a<4;a++){
+    try{
+      if(txMode!=='flash'&&txMode!=='upload'){try{const t=await interact({type:'audio',data:b64,mime_type:'audio/wav'});txMode='inline';return t}catch(e){if(e.status===400&&txMode!=='inline'){txMode='upload'}else if(e.status===404){txMode='flash'}else throw e}}
+      if(txMode==='upload'){try{return await interact({type:'audio',uri:await uploadWav(bytes),mime_type:'audio/wav'})}catch(e){if(e.status===400||e.status===404)txMode='flash';else throw e}}
+      return await gemini([{text:'Transkriber talen i dette lydklippet på norsk. Skriv det som blir sagt så ordrett som mulig, men med riktig tegnsetting og hele setninger. Svar kun med teksten. Er det ingen tydelig tale, svar med en tom streng.'+((DB.settings.vocab||'').trim()?' Ord og navn som kan forekomme: '+DB.settings.vocab:'')},{inline_data:{mime_type:'audio/wav',data:b64}}]);
+    }catch(e){last=e;if([401,403].includes(e.status))break;await sleep(2500*(a+1))}
+  }
+  throw last||new Error('Ukjent feil');
+}
+
 /* ---------- Opptak ---------- */
+const audioStore=new Map(); // lyd for biter som venter eller feilet (bare i minnet)
+async function runChunk(seg){
+  const a=audioStore.get(seg.id);if(!a)return;
+  seg.status='wait';renderTx();
+  try{const t=await transcribe(a.b64,a.bytes);seg.text=(t||'').trim();delete seg.status;delete seg.tries;audioStore.delete(seg.id);
+    if(!seg.text)S.segments=S.segments.filter(x=>x!==seg)}
+  catch(e){seg.status='fail';seg.err=e.message;seg.tries=(seg.tries||0)+1;if(seg.tries>=6)audioStore.delete(seg.id)}
+  save();renderTx();
+}
+function retryFailed(){for(const seg of S.segments)if(seg.status==='fail'&&audioStore.has(seg.id))queue=queue.then(()=>runChunk(seg))}
+setInterval(()=>{if(navigator.onLine!==false)retryFailed()},60000);
+window.addEventListener('online',retryFailed);
 let on=false,t0=0,tick=null,wake=null,pending=0;
 const now=()=>(Date.now()-t0)/1000;
 function addSeg(text,t){text=text.trim();if(!text)return;S.segments.push({id:uid(),t,text});save();renderTx();window.scrollTo({top:document.body.scrollHeight})}
@@ -236,15 +289,23 @@ async function toWav(blob){
   for(let i=0;i<n;i++){const v=Math.max(-1,Math.min(1,src[Math.floor(i*ratio)]));dv.setInt16(44+i*2,v<0?v*0x8000:v*0x7fff,true)}
   const b=new Uint8Array(dv.buffer);let s='';for(let i=0;i<b.length;i+=0x8000)s+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000));return btoa(s);
 }
-function piece(){
+async function ensureStream(){
+  const tr=stream&&stream.getAudioTracks()[0];
+  if(!tr||tr.readyState==='ended'){stream=await navigator.mediaDevices.getUserMedia({audio:true})}
+}
+async function piece(){
+  try{await ensureStream()}catch(e){status('Mistet mikrofonen – trykk Start igjen');stop();return}
+  if(!on)return;
   const chunks=[],at=now();mr=new MediaRecorder(stream);
   mr.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  mr.onstop=()=>{const blob=new Blob(chunks,{type:mr.mimeType}),end=now();if(on)piece();if(blob.size<2000)return;pending++;status();
-    queue=queue.then(async()=>{
-      const mine=()=>previews.filter(p=>p.t<end);
-      try{const t=await gemini([{text:'Transkriber talen i dette lydklippet på norsk. Skriv det som blir sagt så ordrett som mulig, men med riktig tegnsetting og hele setninger. Svar kun med teksten. Er det ingen tydelig tale, svar med en tom streng.'},{inline_data:{mime_type:'audio/wav',data:await toWav(blob)}}]);addSeg(t,at)}
-      catch(e){const fb=mine().map(p=>p.text).join(' ');addSeg(fb?fb+' (live-tekst, Gemini feilet)':'(feil: '+e.message+')',at)}
-      previews=previews.filter(p=>p.t>=end);renderPreview();pending--;status()})};
+  mr.onstop=async()=>{const blob=new Blob(chunks,{type:mr.mimeType}),end=now();if(on)piece();if(blob.size<2000)return;
+    // Les lyden med en gang, før den kan bli utilgjengelig
+    const seg={id:uid(),t:at,text:'',status:'wait'};S.segments.push(seg);pending++;status();renderTx();
+    try{const b64=await toWav(blob);const bin=atob(b64),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);audioStore.set(seg.id,{b64,bytes})}
+    catch(e){const fb=previews.filter(p=>p.t<end).map(p=>p.text).join(' ');seg.text=fb;seg.status=fb?undefined:'fail';if(!fb)seg.err='Lyden kunne ikke leses';previews=previews.filter(p=>p.t>=end);renderPreview();pending--;status();save();renderTx();return}
+    queue=queue.then(async()=>{await runChunk(seg);
+      if(seg.status==='fail'){const fb=previews.filter(p=>p.t<end).map(p=>p.text).join(' ');if(fb)seg.preview=fb}
+      previews=previews.filter(p=>p.t>=end);renderPreview();pending--;status();if(!seg.status)retryFailed()})};
   mr.start();cut=setTimeout(()=>mr.state==='recording'&&mr.stop(),Math.max(10,+DB.settings.chunk||20)*1000);
 }
 async function start(){
@@ -284,7 +345,7 @@ function addNote(){
 function transcriptForAI(){
   const by={};for(const n of S.notes)(by[n.segId||'_end']??=[]).push(n);
   const nt=n=>n.kind==='q'?`   [MITT SPØRSMÅL: ${n.text}${n.answer?` | SVAR JEG FIKK: ${n.answer}`:' | (ubesvart)'}]`:`   [MITT NOTAT: ${n.text}]`;
-  return S.segments.map(s=>`[${fmt(s.t)}] ${s.text}`+((by[s.id]||[]).map(n=>'\n'+nt(n)).join(''))).join('\n')+((by['_end']||[]).map(n=>'\n'+nt(n)).join(''));
+  return S.segments.filter(s=>s.text||s.preview).map(s=>`[${fmt(s.t)}] ${s.text||s.preview+' (usikker tekst)'}`+((by[s.id]||[]).map(n=>'\n'+nt(n)).join(''))).join('\n')+((by['_end']||[]).map(n=>'\n'+nt(n)).join(''));
 }
 async function summarize(){
   if(!S.segments.length&&!S.notes.length){$('sum').textContent='Ingen tekst å oppsummere ennå.';return}
@@ -336,6 +397,7 @@ $('list').addEventListener('click',e=>{
 });
 $('title').addEventListener('input',()=>{S.title=$('title').value;save()});
 $('tx').addEventListener('click',e=>{
+  const rt=e.target.closest('[data-retry]');if(rt){const seg=S.segments.find(x=>x.id===rt.dataset.retry);if(seg)queue=queue.then(()=>runChunk(seg));return}
   const d=e.target.closest('[data-del]');if(d){S.notes=S.notes.filter(n=>n.id!==d.dataset.del);save();renderTx();return}
   if(e.target.closest('input'))return;
   const s=e.target.closest('[data-seg]');if(s){anchor=anchor===s.dataset.seg?null:s.dataset.seg;renderTx();renderAnchor();if(anchor)$('noteIn').focus()}
@@ -346,8 +408,8 @@ $('noteBtn').addEventListener('click',addNote);
 $('anchorClr').addEventListener('click',()=>{anchor=null;renderTx();renderAnchor()});
 $('sumBtn').addEventListener('click',summarize);
 $('copyBtn').addEventListener('click',()=>navigator.clipboard.writeText(exportText()).then(()=>status('Kopiert')).catch(()=>status('Kunne ikke kopiere')));
-$('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('settings').showModal()});
-$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;save();renderKey();$('settings').close()});
+$('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('vocab').value=DB.settings.vocab||'';$('settings').showModal()});
+$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;DB.settings.vocab=$('vocab').value;save();renderKey();$('settings').close()});
 renderAll();status();
 }
 </script>

@@ -105,9 +105,9 @@ dialog label{display:block;font-size:14px;color:var(--mut);margin:10px 0 4px}
   </div>
 
   <h2>Transkripsjon</h2>
-  <div class="st" style="margin:-4px 0 8px">Trykk på en linje for å knytte et notat eller spørsmål til den. Start med <b>?</b> for spørsmål.</div>
+  <div class="st" style="margin:-4px 0 8px">Teksten samles per minutt. Skriv notater mens du lytter: de havner i minuttet som pågår. Trykk på et tidligere minutt for å legge notatet der. Start med <b>?</b> for spørsmål.</div>
   <div id="tx"></div>
-  <div class="interim" id="interim"></div>
+  
 
   <div class="composer">
     <div class="anchor"><span id="anchorTxt">Notatet knyttes til siste linje</span><button id="anchorClr" class="hide">Fjern</button></div>
@@ -149,8 +149,9 @@ const fmt=t=>{t=Math.max(0,Math.floor(t));return String(Math.floor(t/60)).padSta
 
 /* ---------- Lagring (lokalt nå; synk mellom enheter kommer i neste steg) ---------- */
 const LS='referat-v1';
-let DB={settings:{key:'',model:'gemini-flash-latest',chunk:20,engine:'live'},sessions:[],current:null};
+let DB={settings:{key:'',model:'gemini-flash-latest',chunk:60,engine:'hybrid'},sessions:[],current:null};
 try{const v=JSON.parse(localStorage.getItem(LS)||'null');if(v)DB={...DB,...v,settings:{...DB.settings,...v.settings}}}catch(e){}
+if(!DB.settings.chunkV2){DB.settings.chunk=60;DB.settings.chunkV2=true}
 try{if(!DB.settings.key){const old=JSON.parse(localStorage.getItem('motelogg-poc')||'{}');if(old.key)DB.settings.key=old.key}}catch(e){}
 const save=()=>{try{localStorage.setItem(LS,JSON.stringify(DB))}catch(e){}};
 const newSession=()=>({id:uid(),title:'',created:new Date().toISOString(),dur:0,segments:[],notes:[],summary:null});
@@ -159,22 +160,33 @@ if(!S){S=newSession();DB.sessions.push(S);DB.current=S.id;save()}
 for(const x of DB.sessions)for(const g of x.segments)if(g.status==='wait')g.status='fail';
 
 /* ---------- Visning ---------- */
-let anchor=null;
+let anchor=null; // minutt (tall) eller null = nå
+const minOf=t=>Math.floor((t||0)/60);
+let lastLiveMin=-1,txDirty=false;
 function renderTx(){
-  const notesBy={};for(const n of S.notes)(notesBy[n.segId||'_end']??=[]).push(n);
-  const noteHTML=n=>`<div class="note ${n.kind==='q'?'q':''}" data-note="${esc(n.id)}">
+  // Ikke tegn på nytt mens du skriver et svar i transkripsjonen
+  if($('tx').contains(document.activeElement)&&document.activeElement.matches('input')){txDirty=true;return}
+  txDirty=false;
+  const blocks=new Map(),get=k=>{if(!blocks.has(k))blocks.set(k,{segs:[],notes:[]});return blocks.get(k)};
+  for(const g of S.segments)get(minOf(g.t)).segs.push(g);
+  for(const n of S.notes)get(minOf(n.t)).notes.push(n);
+  const liveMin=on?minOf(now()):-1;if(on)get(liveMin);lastLiveMin=liveMin;
+  const noteHTML=n=>`<div class="note ${n.kind==='q'?'q':''}">
     <div class="k"><span>${n.kind==='q'?'SPØRSMÅL':'NOTAT'} · ${fmt(n.t)}</span><button data-del="${esc(n.id)}">Slett</button></div>
     <div>${esc(n.text)}</div>
     ${n.kind==='q'?`<input data-ans="${esc(n.id)}" placeholder="Svar …" value="${esc(n.answer||'')}">`:''}</div>`;
-  const body=s=>s.status==='wait'?'Transkriberer …':s.status==='fail'?`Klarte ikke å transkribere denne biten${audioStore.has(s.id)?'. Prøver igjen automatisk.':' (lyden er tapt).'}${audioStore.has(s.id)?`<button data-retry="${esc(s.id)}">Prøv nå</button>`:''}`:esc(s.text);
-  let h=S.segments.map(s=>`<div class="seg ${anchor===s.id?'sel':''} ${s.status||''}" data-seg="${esc(s.id)}"><div class="t">${fmt(s.t)}</div><div>${body(s)}</div></div>`+(notesBy[s.id]||[]).map(noteHTML).join('')).join('');
-  h+=(notesBy['_end']||[]).map(noteHTML).join('');
+  const segHTML=g=>g.status==='wait'?'<span class="preview">[transkriberer …]</span>'
+    :g.status==='fail'?`<span style="color:var(--rec)">[en bit kunne ikke transkriberes${audioStore.has(g.id)?', prøver igjen':''}]</span>${audioStore.has(g.id)?` <button data-retry="${esc(g.id)}" style="min-height:26px;padding:0 8px;font-size:12px">Prøv nå</button>`:''}`
+    :esc(g.text);
+  const h=[...blocks.keys()].sort((a,b)=>a-b).map(k=>{const b=blocks.get(k);
+    return `<div class="seg ${anchor===k?'sel':''}" data-blk="${k}"><div class="t">${fmt(k*60)}</div><div>${b.segs.map(segHTML).join(' ')}${k===liveMin?' <span class="preview" id="interim"></span>':''}${k===liveMin&&!b.segs.length?'':''}</div></div>`+b.notes.map(noteHTML).join('')}).join('');
   $('tx').innerHTML=h||'<div class="empty">Ingen tekst ennå. Trykk Start.</div>';
+  if(on)renderPreview();
 }
 function renderAnchor(){
-  const s=S.segments.find(x=>x.id===anchor);
-  $('anchorTxt').textContent=s?`Knyttes til ${fmt(s.t)}: «${s.text.slice(0,60)}${s.text.length>60?'…':''}»`:'Notatet knyttes til siste linje';
-  $('anchorClr').classList.toggle('hide',!s);
+  const has=anchor!==null&&anchor!==undefined;
+  $('anchorTxt').textContent=has?`Knyttes til minuttet ${fmt(anchor*60)}`:(on?'Notatet havner i minuttet som pågår nå':'Notatet havner i siste minutt');
+  $('anchorClr').classList.toggle('hide',!has);
 }
 function renderSummary(){
   const m=S.summary;
@@ -285,7 +297,7 @@ function status(msg){$('state').textContent=msg||(on?(pending?`Tar opp · ${pend
 // Live: nettleserens talegjenkjenning (Chrome på PC/Mac/Android, Safari)
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let sr=null,segStart=0;
 let previews=[],interimTxt='';
-const renderPreview=()=>{$('interim').textContent=[...previews.map(p=>p.text),interimTxt].join(' ').trim()};
+const renderPreview=()=>{const el=$('interim');if(el)el.textContent=[...previews.map(p=>p.text),interimTxt].join(' ').trim()};
 function liveStart(previewOnly){
   sr=new SR();sr.lang='nb-NO';sr.continuous=true;sr.interimResults=true;
   sr.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal){if(previewOnly)previews.push({t:segStart,text:r[0].transcript.trim()});else addSeg(r[0].transcript,segStart);segStart=now()}else interim+=r[0].transcript}
@@ -321,7 +333,7 @@ async function piece(){
     queue=queue.then(async()=>{await runChunk(seg);
       if(seg.status==='fail'){const fb=previews.filter(p=>p.t<end).map(p=>p.text).join(' ');if(fb)seg.preview=fb}
       previews=previews.filter(p=>p.t>=end);renderPreview();pending--;status();if(!seg.status)retryFailed()})};
-  mr.start();cut=setTimeout(()=>mr.state==='recording'&&mr.stop(),Math.max(10,+DB.settings.chunk||20)*1000);
+  mr.start();cut=setTimeout(()=>mr.state==='recording'&&mr.stop(),Math.max(10,+DB.settings.chunk||60)*1000);
 }
 async function start(){
   const eng=$('engine').value;
@@ -329,7 +341,7 @@ async function start(){
   if(eng!=='live'){if(!DB.settings.key){renderKey();$('keyQuick').focus();status('Legg inn Gemini-nøkkelen først');return}
     try{stream=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){status('Fikk ikke tilgang til mikrofonen');return}}
   on=true;t0=Date.now()-S.dur*1000;$('rec').textContent='Stopp';$('rec').classList.add('on');$('engine').disabled=true;
-  tick=setInterval(()=>{S.dur=now();$('clock').textContent=fmt(S.dur)},1000);
+  tick=setInterval(()=>{S.dur=now();$('clock').textContent=fmt(S.dur);if(minOf(S.dur)!==lastLiveMin)renderTx()},1000);
   try{wake=await navigator.wakeLock?.request('screen')}catch(e){}
   previews=[];interimTxt='';
   if(eng==='live')liveStart(false);else{piece();if(eng==='hybrid'&&SR)liveStart(true)}
@@ -350,17 +362,19 @@ document.addEventListener('visibilitychange',async()=>{if(on&&document.visibilit
 function addNote(){
   let text=$('noteIn').value.trim();if(!text)return;
   const kind=text.startsWith('?')?'q':'note';if(kind==='q')text=text.slice(1).trim();
-  const seg=anchor||S.segments.at(-1)?.id||null;
-  const t=on?now():(S.segments.find(x=>x.id===seg)?.t??S.dur);
-  S.notes.push({id:uid(),segId:seg,t,text,kind,answer:''});
+  const has=anchor!==null&&anchor!==undefined;
+  const t=has?Math.min(anchor*60+59,Math.max(anchor*60,S.dur)):(on?now():S.dur);
+  S.notes.push({id:uid(),t,text,kind,answer:''});
   $('noteIn').value='';anchor=null;save();renderTx();renderAnchor();
 }
 
 /* ---------- Oppsummering ---------- */
 function transcriptForAI(){
-  const by={};for(const n of S.notes)(by[n.segId||'_end']??=[]).push(n);
+  const blocks=new Map(),get=k=>{if(!blocks.has(k))blocks.set(k,{txt:[],notes:[]});return blocks.get(k)};
+  for(const g of S.segments){const t=g.text||(g.preview?g.preview+' (usikker tekst)':'');if(t)get(minOf(g.t)).txt.push(t)}
+  for(const n of S.notes)get(minOf(n.t)).notes.push(n);
   const nt=n=>n.kind==='q'?`   [MITT SPØRSMÅL: ${n.text}${n.answer?` | SVAR JEG FIKK: ${n.answer}`:' | (ubesvart)'}]`:`   [MITT NOTAT: ${n.text}]`;
-  return S.segments.filter(s=>s.text||s.preview).map(s=>`[${fmt(s.t)}] ${s.text||s.preview+' (usikker tekst)'}`+((by[s.id]||[]).map(n=>'\n'+nt(n)).join(''))).join('\n')+((by['_end']||[]).map(n=>'\n'+nt(n)).join(''));
+  return [...blocks.keys()].sort((a,b)=>a-b).map(k=>{const b=blocks.get(k);return `[${fmt(k*60)}] ${b.txt.join(' ')}`+b.notes.map(n=>'\n'+nt(n)).join('')}).join('\n');
 }
 async function summarize(){
   if(!S.segments.length&&!S.notes.length){$('sum').textContent='Ingen tekst å oppsummere ennå.';return}
@@ -415,8 +429,9 @@ $('tx').addEventListener('click',e=>{
   const rt=e.target.closest('[data-retry]');if(rt){const seg=S.segments.find(x=>x.id===rt.dataset.retry);if(seg)queue=queue.then(()=>runChunk(seg));return}
   const d=e.target.closest('[data-del]');if(d){S.notes=S.notes.filter(n=>n.id!==d.dataset.del);save();renderTx();return}
   if(e.target.closest('input'))return;
-  const s=e.target.closest('[data-seg]');if(s){anchor=anchor===s.dataset.seg?null:s.dataset.seg;renderTx();renderAnchor();if(anchor)$('noteIn').focus()}
+  const b=e.target.closest('[data-blk]');if(b){const k=+b.dataset.blk;const live=on&&k===minOf(now());anchor=(anchor===k||live)?null:k;renderTx();renderAnchor();$('noteIn').focus()}
 });
+$('tx').addEventListener('focusout',()=>setTimeout(()=>{if(txDirty)renderTx()},0));
 $('tx').addEventListener('input',e=>{const a=e.target.closest('[data-ans]');if(a){const n=S.notes.find(x=>x.id===a.dataset.ans);if(n){n.answer=a.value;save()}}});
 $('noteIn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addNote()}});
 $('noteBtn').addEventListener('click',addNote);
@@ -424,7 +439,7 @@ $('anchorClr').addEventListener('click',()=>{anchor=null;renderTx();renderAnchor
 $('sumBtn').addEventListener('click',summarize);
 $('copyBtn').addEventListener('click',()=>navigator.clipboard.writeText(exportText()).then(()=>status('Kopiert')).catch(()=>status('Kunne ikke kopiere')));
 $('setBtn').addEventListener('click',()=>{$('key').value=DB.settings.key;$('model').value=DB.settings.model;$('chunk').value=DB.settings.chunk;$('vocab').value=DB.settings.vocab||'';$('dbg').textContent='Metode: '+(txMode||'ikke brukt ennå')+'\nSiste svar fra Google:\n'+(lastRaw||'–');$('settings').showModal()});
-$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||20;DB.settings.vocab=$('vocab').value;save();renderKey();$('settings').close()});
+$('setClose').addEventListener('click',()=>{DB.settings.key=$('key').value.trim();DB.settings.model=$('model').value.trim()||'gemini-flash-latest';DB.settings.chunk=+$('chunk').value||60;DB.settings.vocab=$('vocab').value;save();renderKey();$('settings').close()});
 renderAll();status();
 }
 </script>

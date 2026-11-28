@@ -99,6 +99,35 @@ private func nn<T>(_ x: T?) -> Any {
     return NSNull()
 }
 
+// MARK: - Lokal kopi (vises med en gang når appen åpnes)
+
+struct CacheFile: Codable {
+    var tasks: [TaskRow]
+    var waiting: [WaitRow]
+    var wins: [Win]
+    var meetings: [Meeting]
+    var projects: [String: String]
+    var chores: [ChoreEntry]
+    var pending: [String]          // oppgaver med endringer som ikke har nådd databasen
+    var savedAt: String
+}
+
+enum LocalCache {
+    static var url: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("gjoreliste-cache.json")
+    }
+    static func read() -> CacheFile? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(CacheFile.self, from: data)
+    }
+    static func write(_ c: CacheFile) {
+        if let data = try? JSONEncoder().encode(c) { try? data.write(to: url, options: .atomic) }
+    }
+    static func clear() { try? FileManager.default.removeItem(at: url) }
+}
+
 // MARK: - Store
 
 @MainActor
@@ -113,6 +142,24 @@ final class Store: ObservableObject {
     @Published var undoItem: UndoItem?
     @Published var openTaskId: String?
     @Published var chores: [ChoreEntry] = []
+    /// true mens appen henter nytt fra databasen i bakgrunnen.
+    @Published var syncing = false
+    /// Oppgaver som er endret her, men ikke lagret i databasen ennå (for eksempel uten nett).
+    private var pending: Set<String> = []
+
+    init() {
+        if let c = LocalCache.read() {
+            tasks = c.tasks; waiting = c.waiting; wins = c.wins; meetings = c.meetings
+            projects = c.projects; chores = c.chores; pending = Set(c.pending)
+        }
+    }
+
+    /// Lagrer lista lokalt, så den kan vises med en gang neste gang appen åpnes.
+    func saveCache() {
+        LocalCache.write(CacheFile(tasks: tasks, waiting: waiting, wins: wins, meetings: meetings,
+                                   projects: projects, chores: chores, pending: Array(pending),
+                                   savedAt: Day.nowISO()))
+    }
 
     /// Hurtigknappene og Tody-oppgaven hver av dem krysser av.
     static let choreTask = ["oppvask": "tody-kitchen-do-the-dishes", "soppel": "tody-kitchen-take-out-garbage"]
@@ -139,7 +186,17 @@ final class Store: ObservableObject {
     // MARK: Lasting
 
     func load() async {
+        if syncing { return }
+        syncing = true
+        defer { syncing = false }
         let since = Day.add(today, -7)
+        // Endringer gjort uten nett sendes før vi henter nytt
+        for id in pending {
+            guard let t = tasks.first(where: { $0.id == id }) else { pending.remove(id); continue }
+            do { try await API.shared.update("tasks", id: id, stateFields(t)); pending.remove(id) }
+            catch APIError.notLoggedIn { loggedIn = false; return }
+            catch { break }
+        }
         do {
             async let t: [TaskRow] = API.shared.select("tasks")
             async let w: [WaitRow] = API.shared.select("waiting")
@@ -151,7 +208,9 @@ final class Store: ObservableObject {
             let (tt, ww, wiwi, mm, pp, chch) = try await (t, w, wi, m, p, ch)
             // Behold koblinger til påminnelser som ennå ikke har nådd databasen
             let localLinks = Dictionary(tasks.compactMap { t in t.reminder_id.map { (t.id, $0) } }, uniquingKeysWith: { a, _ in a })
+            let unsaved = Dictionary(tasks.filter { pending.contains($0.id) }.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             tasks = tt.map { r in
+                if let local = unsaved[r.id] { return local }
                 var r = r
                 if r.reminder_id == nil, let rid = localLinks[r.id] { r.reminder_id = rid }
                 return r
@@ -169,6 +228,8 @@ final class Store: ObservableObject {
             if syncReminders { await RemindersSync.shared.run(store: self) }
         } catch APIError.notLoggedIn {
             loggedIn = false
+        } catch is URLError {
+            self.error = "Uten nett – viser sist lagrede liste. Endringer sendes når appen får kontakt."
         } catch {
             self.error = error.localizedDescription
         }
@@ -178,12 +239,15 @@ final class Store: ObservableObject {
         API.shared.signOut()
         loggedIn = false
         tasks = []
+        pending = []
+        LocalCache.clear()
         Shared.saveSnapshot(.empty)
         WidgetCenter.shared.reloadAllTimelines()
     }
 
     /// Skriver toppen av lista til widgetene.
     func publishWidget() {
+        saveCache()
         let open = openList()
         let items = open.prefix(8).map { t in
             WidgetItem(id: t.id, t: t.t, dueDate: dueOf(t), star: t.star == 1,
@@ -293,8 +357,10 @@ final class Store: ObservableObject {
         guard let idx = tasks.firstIndex(where: { $0.id == n.id }) else { return }
         tasks[idx] = n
         if let undoText { showUndo(undoText, prev) }
-        do { try await API.shared.update("tasks", id: n.id, stateFields(n)) }
-        catch { self.error = "Kunne ikke lagre: \(error.localizedDescription)" }
+        pending.insert(n.id)
+        do { try await API.shared.update("tasks", id: n.id, stateFields(n)); pending.remove(n.id) }
+        catch APIError.notLoggedIn { loggedIn = false }
+        catch { /* uten nett: lagres lokalt og sendes neste gang appen får kontakt */ }
         publishWidget()
         scheduleSync()
     }

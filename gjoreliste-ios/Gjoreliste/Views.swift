@@ -188,6 +188,9 @@ struct HeroView: View {
                     .foregroundStyle(.secondary)
                 ProgressView(value: Double(min(st.p, store.goal)), total: Double(store.goal))
                     .tint(accent)
+                if store.syncing {
+                    Text("Oppdaterer …").font(.caption2).foregroundStyle(.secondary)
+                }
             }
         }
         .animation(.default, value: st.p)

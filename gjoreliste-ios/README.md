@@ -2,7 +2,17 @@
 
 Samme gjøreliste som nettsiden (`gjoreliste/`), som egen app. Den henter og lagrer alt i Supabase, og holder listen **«Gjøreliste» i Påminnelser** lik toppen av lista.
 
-## Slik bygger du appen
+## Bygg i skyen og installer via TestFlight (anbefalt)
+
+Med betalt Apple Developer Program bygges appen av GitHub Actions hver gang noe i `gjoreliste-ios/` endres på `main`, og sendes rett til TestFlight. MacBooken trengs ikke, og appen utløper ikke etter 7 dager.
+
+- **Oppsettet** ligger i `.github/workflows/gjoreliste-ios.yml`.
+- **Hemmeligheter** (Settings → Secrets and variables → Actions): `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (hele .p8-fila) og `APPLE_TEAM_ID`.
+- **Byggnummeret** settes automatisk fra GitHub (`run_number`). Versjonsnummeret (`MARKETING_VERSION`) endres i prosjektet når det er en ny versjon.
+- **Kjøre manuelt:** Actions → «Gjøreliste iOS → TestFlight» → Run workflow.
+- **På iPhonen:** installer appen TestFlight. Nye bygg dukker opp der 5–20 minutter etter at bygget er ferdig.
+
+## Slik bygger du appen på Mac (gammel måte, gratis Apple-ID)
 
 1. **Hent filene:** Last ned dette repoet som ZIP (grønn «Code»-knapp → Download ZIP) og pakk det ut.
 2. **Åpne prosjektet:** Dobbeltklikk på `gjoreliste-ios/Gjoreliste.xcodeproj`.

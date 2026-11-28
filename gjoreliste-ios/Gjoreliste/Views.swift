@@ -63,6 +63,16 @@ struct MainView: View {
         NavigationStack {
             List {
                 Section { HeroView() }
+                Section {
+                    HStack(spacing: 8) {
+                        LaundryButton(chore: "vask", label: "Vask på")
+                        LaundryButton(chore: "tork", label: "Til tørk")
+                        LaundryButton(chore: "brett", label: "Brettet")
+                    }
+                    .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
+                } header: {
+                    Text("Klesvask")
+                }
                 let open = store.openList()
                 let n = store.topCount(open)
                 Section(store.urgentCount(open) > 0 ? "Gjør disse først" : "Neste") {
@@ -380,6 +390,44 @@ struct ChoreButton: View {
     }
 }
 
+/// Stor hurtigknapp for klesvasken, med dagens antall. Hvert trykk lagres i historikken.
+struct LaundryButton: View {
+    @EnvironmentObject var store: Store
+    let chore: String
+    let label: String
+
+    var body: some View {
+        let n = store.choreToday(chore)
+        Button {
+            Task { await store.logChore(chore) }
+        } label: {
+            VStack(spacing: 4) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: Store.choreInfo[chore]?.symbol ?? "checkmark")
+                        .font(.title2)
+                        .frame(maxWidth: .infinity)
+                    if n > 0 {
+                        Text("\(n)")
+                            .font(.caption.weight(.heavy).monospacedDigit())
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(Capsule().fill(accent))
+                            .foregroundStyle(.white)
+                            .contentTransition(.numericText())
+                    }
+                }
+                Text(label).font(.footnote.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .foregroundStyle(accent)
+            .background(RoundedRectangle(cornerRadius: 12).fill(accent.opacity(0.12)))
+            .animation(.default, value: n)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Store.choreInfo[chore]?.name ?? label)
+        .accessibilityValue("\(n) i dag")
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
@@ -393,10 +441,10 @@ struct SettingsView: View {
                     }
                     ForEach(store.chores) { c in
                         HStack(spacing: 12) {
-                            Image(systemName: c.chore == "oppvask" ? "fork.knife" : "trash.fill")
+                            Image(systemName: Store.choreInfo[c.chore]?.symbol ?? "checkmark")
                                 .foregroundStyle(accent)
                                 .frame(width: 24)
-                            Text(c.chore == "oppvask" ? "Oppvask" : "Søpla ut")
+                            Text(Store.choreInfo[c.chore]?.name ?? c.chore)
                             Spacer()
                             Text(Self.when(c.at)).font(.callout).foregroundStyle(.secondary)
                         }
@@ -406,7 +454,7 @@ struct SettingsView: View {
                         Task { for id in ids { await store.removeChore(id) } }
                     }
                 } header: {
-                    Text("Historikk – oppvask \(store.choreCount("oppvask")), søppel \(store.choreCount("soppel"))")
+                    Text("Historikk – oppvask \(store.choreCount("oppvask")), søppel \(store.choreCount("soppel")), klesvask \(store.choreCount("vask"))")
                 } footer: {
                     Text("Sveip mot venstre for å fjerne et feiltrykk.")
                 }

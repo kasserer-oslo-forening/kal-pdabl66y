@@ -116,6 +116,14 @@ final class Store: ObservableObject {
 
     /// Hurtigknappene og Tody-oppgaven hver av dem krysser av.
     static let choreTask = ["oppvask": "tody-kitchen-do-the-dishes", "soppel": "tody-kitchen-take-out-garbage"]
+    /// Ikon, navn i historikken og tekst etter trykk for hver hurtigknapp.
+    static let choreInfo: [String: (symbol: String, name: String, done: String)] = [
+        "oppvask": ("fork.knife", "Oppvask", "Oppvasken er tatt."),
+        "soppel": ("trash.fill", "Søpla ut", "Søpla er ute."),
+        "vask": ("washer.fill", "Klesvask satt på", "Klesvasken er satt på."),
+        "tork": ("wind", "Hengt til tørk / tørketrommel", "Klærne er til tørk."),
+        "brett": ("tshirt.fill", "Brettet og lagt på plass", "Klærne er brettet og lagt på plass."),
+    ]
     @Published var syncReminders: Bool = (UserDefaults.standard.object(forKey: "syncReminders") as? Bool) ?? true {
         didSet {
             UserDefaults.standard.set(syncReminders, forKey: "syncReminders")
@@ -351,7 +359,7 @@ final class Store: ObservableObject {
             self.error = "Kunne ikke lagre: \(error.localizedDescription)"
             return
         }
-        let text = chore == "oppvask" ? "Oppvasken er tatt." : "Søpla er ute."
+        let text = Self.choreInfo[chore]?.done ?? "Registrert."
         if let tid = taskId, let t = tasks.first(where: { $0.id == tid }) {
             var n = t
             if let e = n.e { let nx = Day.add(today, e); n.next = nx; n.snooze = nx }

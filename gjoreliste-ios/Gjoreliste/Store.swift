@@ -439,8 +439,10 @@ final class Store: ObservableObject {
             await apply(n, undoText: nil, prev: t)
             showUndo("\(text) +\(pts(t)) poeng", nil, choreId: id)
         } else {
+            // Databasen gjør trykket om til en ekstra ting gjort til 10 poeng (wins-raden «chore-<id>»).
+            wins.append(Win(id: "chore-" + id, d: today, pts: 10))
             publishWidget()
-            showUndo(text, nil, choreId: id)
+            showUndo("\(text) +10 poeng", nil, choreId: id)
         }
     }
 
@@ -450,6 +452,7 @@ final class Store: ObservableObject {
         chores.removeAll { $0.id == id }
         do { try await API.shared.delete("chore_log", id: id) }
         catch { self.error = "Kunne ikke slette: \(error.localizedDescription)" }
+        wins.removeAll { $0.id == "chore-" + id }
         guard let tid = entry.task_id, let t = tasks.first(where: { $0.id == tid }) else { publishWidget(); return }
         var n = t
         var log = n.log ?? []

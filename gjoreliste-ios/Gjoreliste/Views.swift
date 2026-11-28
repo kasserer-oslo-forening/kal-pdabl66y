@@ -294,6 +294,11 @@ struct DetailView: View {
                     Text(w).font(.callout).foregroundStyle(.secondary)
                 }
             }
+            ForEach(Array((t.weeks ?? []).enumerated()), id: \.offset) { _, wk in
+                Section(wk.title ?? "Uka") {
+                    MiniWeek(week: wk)
+                }
+            }
             if !sources.isEmpty {
                 Section("Hvor kommer dette fra") {
                     ForEach(sources, id: \.self) { s in
@@ -517,4 +522,76 @@ func choreIcon(_ symbol: String, count: Int) -> UIImage {
         }
     }
     return img.withRenderingMode(.alwaysTemplate)
+}
+
+
+/// Viser en uke med det som skjer hver dag, og markerer forslaget med ►.
+struct MiniWeek: View {
+    let week: WeekProp
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let note = week.note, !note.isEmpty {
+                Text(note).font(.footnote).foregroundStyle(.secondary).padding(.bottom, 2)
+            }
+            ForEach(week.days ?? [], id: \.d) { day in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(day.mark == true ? "►" : " ")
+                        .font(.caption.bold())
+                        .foregroundStyle(accent)
+                        .frame(width: 12)
+                    Text(Self.label(day.d))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(day.d == Day.today ? Color.red : Color.secondary)
+                        .frame(width: 66, alignment: .leading)
+                    FlowChips(items: day.items ?? [])
+                }
+                .padding(.vertical, 3)
+                .padding(.horizontal, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(day.mark == true ? accent.opacity(0.14) : Color.clear))
+            }
+        }
+    }
+
+    static func label(_ d: String) -> String {
+        let date = Day.parse(d)
+        let wd = ["søn", "man", "tir", "ons", "tor", "fre", "lør"][Calendar.current.component(.weekday, from: date) - 1]
+        return "\(wd) \(Calendar.current.component(.day, from: date)).\(Calendar.current.component(.month, from: date))"
+    }
+}
+
+private struct FlowChips: View {
+    let items: [WeekItem]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if items.isEmpty {
+                Text("–").font(.caption).foregroundStyle(.secondary)
+            }
+            ForEach(Array(items.enumerated()), id: \.offset) { _, it in
+                Text(it.t)
+                    .font(.caption.weight(it.k == "forslag" ? .semibold : .regular))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .foregroundStyle(fg(it.k))
+                    .background(Capsule().fill(bg(it.k)))
+            }
+        }
+    }
+    private func fg(_ k: String?) -> Color {
+        switch k {
+        case "forslag": return .white
+        case "vakt": return .orange
+        case "mote": return .blue
+        case "reise": return .red
+        default: return .primary
+        }
+    }
+    private func bg(_ k: String?) -> Color {
+        switch k {
+        case "forslag": return accent
+        case "vakt": return Color.orange.opacity(0.15)
+        case "mote": return Color.blue.opacity(0.13)
+        case "reise": return Color.red.opacity(0.13)
+        default: return Color.secondary.opacity(0.12)
+        }
+    }
 }

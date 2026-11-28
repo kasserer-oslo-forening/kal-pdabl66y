@@ -10,6 +10,11 @@ struct Src: Codable, Hashable {
 }
 struct Doc: Codable, Hashable { var t: String?; var url: String? }
 
+/// Mini-ukekalender som kontekst for et forslag (kolonnen tasks.weeks).
+struct WeekItem: Codable, Hashable { var t: String; var k: String? }
+struct WeekDay: Codable, Hashable { var d: String; var mark: Bool?; var items: [WeekItem]? }
+struct WeekProp: Codable, Hashable { var title: String?; var note: String?; var days: [WeekDay]? }
+
 struct TaskRow: Codable, Identifiable, Hashable {
     var id: String
     var t: String
@@ -36,6 +41,7 @@ struct TaskRow: Codable, Identifiable, Hashable {
     var needs_triage: Bool?
     var reminder_id: String?
     var created_at: String?
+    var weeks: [WeekProp]?
 }
 struct WaitRow: Codable, Identifiable { var id: String; var log: [String]? }
 struct Win: Codable, Identifiable { var id: String; var d: String; var pts: Int? }

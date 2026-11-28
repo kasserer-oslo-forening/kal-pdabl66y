@@ -116,6 +116,22 @@ details.ctx .ctxd{font:500 .72rem var(--mono);margin-top:4px}
 .srch{font:600 .72rem var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .srci{display:flex;flex-direction:column;gap:2px}
 .srcat{font:500 .74rem var(--mono);color:var(--muted)}
+.wk{border:1px solid var(--line);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;font-size:.86rem;cursor:default}
+.wk h4{margin:0 0 2px;font:600 .9rem var(--display)}
+.wk .wn{color:var(--muted);font-size:.84rem;margin:0 0 4px}
+.wkd{display:grid;grid-template-columns:16px 74px 1fr;gap:6px;align-items:start;padding:3px 4px;border-radius:6px}
+.wkd.mark{background:var(--accent-soft)}
+.wkd.now .wdl{color:var(--crit)}
+.wkd .wm{color:var(--accent);font-weight:700}
+.wdl{font:500 .78rem var(--mono);color:var(--muted);padding-top:2px;white-space:nowrap}
+.wki{display:flex;flex-wrap:wrap;gap:4px}
+.wkc{padding:1px 7px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-size:.8rem}
+.wkc.vakt{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+.wkc.mote{background:#e6eefb;border-color:transparent;color:#2d5aa8}
+.wkc.fri{color:var(--muted)}
+.wkc.reise{background:var(--crit-soft);border-color:transparent;color:var(--crit)}
+.wkc.forslag{background:var(--accent);border-color:var(--accent);color:var(--surface);font-weight:600}
+@media (prefers-color-scheme:dark){.wkc.mote{background:#1d2a40;color:#8fb3f0}}
 .src blockquote{margin:2px 0;padding:2px 0 2px 8px;border-left:2px solid var(--line);color:var(--fg);white-space:pre-wrap}
 .row{display:grid;grid-template-columns:1fr auto;gap:8px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;align-items:start}
 .row.due{border-color:var(--warn)}
@@ -269,6 +285,15 @@ function ptsTask(t){if(!t||t.hist)return 10;return ({0:10,1:20,2:30}[t.i||0]||10
 function ptsOf(id){return ptsTask(allTasks().find(x=>x.id===id))}
 function dayStats(day){let n=0,p=0;Object.entries(S).forEach(([id,s])=>{let k=(s.log||[]).filter(x=>x===day).length;if(s.done&&s.doneAt&&s.doneAt.slice(0,10)===day&&!(s.log||[]).includes(day))k++;n+=k;p+=k*ptsOf(id)});Object.values(WINS).forEach(w=>{if(w.d===day){n++;p+=w.pts||15}});return{n,p}}
 function ctxBox(id,label){const c=CTX[id];if(!c||!c.tekst)return null;const d=document.createElement("details");d.className="ctx";d.onclick=e=>e.stopPropagation();d.innerHTML="<summary>"+(label||"Kontekst")+"</summary><div class=\"ctxt\">"+esc(c.tekst)+"</div>"+(c.oppdatert?"<div class=\"ctxd\">Oppdatert "+esc(c.oppdatert)+"</div>":"");return d}
+/* Mini-ukekalender som kontekst for forslag (tasks.weeks) */
+function weekBox(t){const W=t.weeks||[];if(!W.length)return null;const wrap=document.createElement("div");wrap.style.cssText="display:flex;flex-direction:column;gap:8px";wrap.onclick=e=>e.stopPropagation();
+  const WD=["søn","man","tir","ons","tor","fre","lør"];
+  W.forEach(w=>{const b=document.createElement("div");b.className="wk";let h=(w.title?'<h4>'+esc(w.title)+'</h4>':'')+(w.note?'<p class="wn">'+esc(w.note)+'</p>':'');
+    (w.days||[]).forEach(dd=>{const dt=new Date(dd.d+"T12:00:00");const lbl=WD[dt.getDay()]+" "+dt.getDate()+"."+(dt.getMonth()+1);
+      const items=(dd.items||[]).map(it=>'<span class="wkc '+esc(it.k||"")+'">'+esc(it.t)+'</span>').join("")||'<span class="wkc fri">–</span>';
+      h+='<div class="wkd'+(dd.mark?" mark":"")+(dd.d===TODAY?" now":"")+'"><span class="wm">'+(dd.mark?"►":"")+'</span><span class="wdl">'+lbl+'</span><span class="wki">'+items+'</span></div>'});
+    b.innerHTML=h;wrap.appendChild(b)});
+  return wrap}
 function srcBox(t){const L=t.src||[];const D=(t.docs||[]).filter(x=>x.url);if(!L.length&&!D.length)return null;const d=document.createElement("div");d.className="src";d.onclick=e=>e.stopPropagation();let h='<div class="srch">Hvor kommer dette fra</div>';L.forEach(s=>{h+='<div class="srci">'+((s.at||s.who)?'<span class="srcat">'+esc([s.at,s.who,s.k].filter(Boolean).join(" · "))+'</span>':'')+(s.q?'<blockquote>'+esc(s.q)+'</blockquote>':'')+(s.url?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.t||"Åpne")+'</a>':(s.t?'<span>'+esc(s.t)+'</span>':''))+'</div>'});if(D.length)h+='<div class="files">'+D.map(x=>'<a class="file" href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.t)+'</a>').join("")+'</div>';d.innerHTML=h;return d}
 
 const st=id=>S[id]||{};
@@ -387,6 +412,7 @@ function card(t,lead){
   if(openId===t.id){
     const more=document.createElement("div");more.className="more";
     if(t.w)more.insertAdjacentHTML("beforeend","<p>"+esc(t.w)+"</p>");
+    {const wb=weekBox(t);if(wb)more.appendChild(wb)}
     {const sb=srcBox(t);if(sb)more.appendChild(sb)}
     {const cb=ctxBox(t.id);if(cb)more.appendChild(cb)}
     const a=document.createElement("div");a.className="acts";
@@ -662,7 +688,7 @@ function setSync(ok,msg){sync.querySelector("span").textContent=msg||(ok?"Lagret
 function stateOf(r,map){const s={};Object.entries(map).forEach(([k,col])=>{const v=r[col];if(v===null||v===undefined||v===false)return;if(Array.isArray(v)&&!v.length)return;s[k]=v});return s}
 function taskOf(r){
   const hist=(r.done||r.dropped)&&!r.d&&!r.c&&!r.needs_triage;
-  const t={id:r.id,t:r.t,w:r.w||"",p:r.p||"inn",c:r.c||"",m:r.m||0,i:r.i==null?1:r.i,d:r.d||undefined,s:r.s||undefined,e:r.e||undefined,mt:r.mt||undefined,after:r.after||undefined,docs:r.docs||[],src:r.src||[],at:r.created_at,own:!!r.needs_triage,hist};
+  const t={id:r.id,t:r.t,w:r.w||"",p:r.p||"inn",c:r.c||"",m:r.m||0,i:r.i==null?1:r.i,d:r.d||undefined,s:r.s||undefined,e:r.e||undefined,mt:r.mt||undefined,after:r.after||undefined,docs:r.docs||[],src:r.src||[],weeks:r.weeks||[],at:r.created_at,own:!!r.needs_triage,hist};
   if(t.own&&!t.w)t.w="Lagt til "+(r.created_at?fmt(r.created_at.slice(0,10)):"")+". Jeg sorterer den inn snart.";
   return t;
 }

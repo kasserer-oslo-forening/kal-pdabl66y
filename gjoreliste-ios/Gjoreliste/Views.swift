@@ -59,20 +59,26 @@ struct MainView: View {
     @State private var showRest = false
     @State private var showSettings = false
 
+    /// Hurtigknapp i knapperaden på siden, med dagens antall tegnet inn i ikonet.
+    @ToolbarContentBuilder
+    private func choreItem(_ c: String) -> some ToolbarContent {
+        let n = store.choreToday(c)
+        let info = Store.choreInfo[c]
+        ToolbarItem(placement: .topBarTrailing) {
+            Button { Task { await store.logChore(c) } } label: {
+                Label { Text(info?.name ?? c) } icon: {
+                    Image(uiImage: choreIcon(info?.symbol ?? "checkmark", count: n))
+                }
+            }
+            .id("\(c)-\(n)")
+            .accessibilityValue("\(n) i dag")
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section { HeroView() }
-                Section {
-                    HStack(spacing: 8) {
-                        LaundryButton(chore: "vask", label: "Vask på")
-                        LaundryButton(chore: "tork", label: "Til tørk")
-                        LaundryButton(chore: "brett", label: "Brettet")
-                    }
-                    .listRowInsets(EdgeInsets(top: 6, leading: 8, bottom: 6, trailing: 8))
-                } header: {
-                    Text("Klesvask")
-                }
                 let open = store.openList()
                 let n = store.topCount(open)
                 Section(store.urgentCount(open) > 0 ? "Gjør disse først" : "Neste") {
@@ -109,24 +115,11 @@ struct MainView: View {
             .refreshable { await store.load() }
             .toolbar {
                 // Vanlige ikonknapper havner i knapperaden på siden. Tallet for i dag tegnes inn i ikonet.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await store.logChore("oppvask") } } label: {
-                        Label { Text("Oppvask tatt") } icon: {
-                            Image(uiImage: choreIcon("fork.knife", count: store.choreToday("oppvask")))
-                        }
-                    }
-                    .id("oppvask-\(store.choreToday("oppvask"))")
-                    .accessibilityValue("\(store.choreToday("oppvask")) i dag")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await store.logChore("soppel") } } label: {
-                        Label { Text("Søpla er ute") } icon: {
-                            Image(uiImage: choreIcon("trash.fill", count: store.choreToday("soppel")))
-                        }
-                    }
-                    .id("soppel-\(store.choreToday("soppel"))")
-                    .accessibilityValue("\(store.choreToday("soppel")) i dag")
-                }
+                choreItem("oppvask")
+                choreItem("soppel")
+                choreItem("vask")
+                choreItem("tork")
+                choreItem("brett")
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: {
                         Label("Innstillinger og historikk", systemImage: "ellipsis.circle")
